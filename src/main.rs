@@ -12,7 +12,6 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(5)
         .connect(config.database_url.as_str())
         .await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok(())
 }
