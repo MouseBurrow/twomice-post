@@ -18,6 +18,6 @@ BEGIN
     RETURN QUERY
         INSERT INTO post.posts (userid, content, image_url)
             VALUES (new_user_id, new_post_content, new_image_url)
-            RETURNING user_id, content, image_url, created_at;
+            RETURNING created_at, id;
 END;
 $$;
