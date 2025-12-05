@@ -3,18 +3,13 @@ CREATE OR REPLACE FUNCTION create_post(
     new_post_content TEXT,
     new_image_url TEXT
 )
-    RETURNS TABLE
-            (
-                user_id    UUID,
-                content    TEXT,
-                image_url  TEXT,
-                created_at TIMESTAMP
-            )
+    RETURNS TIMESTAMPTZ
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
     existing_user_id UUID;
+    new_created_at   TIMESTAMPTZ;
 BEGIN
     SELECT account_id
     INTO existing_user_id
@@ -26,9 +21,10 @@ BEGIN
     END IF;
 
     -- Insert new post and return full row
-    RETURN QUERY
-        INSERT INTO posts as p (user_id, content, image_url)
-            VALUES (existing_user_id, new_post_content, new_image_url)
-            RETURNING p.user_id, p.content, p.image_url, p.created_at;
+    INSERT INTO posts as p (user_id, content, image_url)
+    VALUES (existing_user_id, new_post_content, new_image_url)
+    RETURNING created_at INTO new_created_at;
+
+    RETURN new_created_at;
 END;
 $$;

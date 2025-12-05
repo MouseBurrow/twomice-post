@@ -5,7 +5,7 @@ CREATE TABLE posts
     user_id    UUID             NOT NULL REFERENCES auth.accounts (id) ON DELETE CASCADE,
     content    TEXT             NOT NULL,
     image_url  TEXT,
-    created_at TIMESTAMP                 DEFAULT NOW()
+    created_at TIMESTAMPTZ               DEFAULT NOW()
 );
 
 -- Sessions table

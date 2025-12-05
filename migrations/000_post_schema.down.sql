@@ -1,5 +1,3 @@
 -- Drop tables first
 DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
-
-
