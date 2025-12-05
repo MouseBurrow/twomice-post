@@ -1,10 +1,9 @@
 use crate::db::errors::PostError;
 use crate::db::post::PostHandler;
-use actix_web::{post, web, web::Json, App, HttpResponse, HttpServer, Responder};
+use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
 use config::Config;
 use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::Postgres;
 use std::env;
 
 mod db;
@@ -24,21 +23,12 @@ async fn post(
     let post_content = &body.post_content;
     let image_url = &body.image_url;
 
-    match PostHandler::create_post(&pool, &token, &post_content, &image_url).await {
-        Ok((user_id, content, url, created_at)) => {
-            return HttpResponse::Ok().json(serde_json::json!({
-                "user id": user_id,
-                "content": content,
-                "Image url ": url,
-                "created_at": created_at
-            }));
-        }
-        Err(PostError::TokenNotFound) => {
-            return HttpResponse::NotFound().body("Token not found!");
-        }
-        Err(_) => {
-            return HttpResponse::InternalServerError().finish();
-        }
+    match PostHandler::create_post(&pool, token, post_content, image_url).await {
+        Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
+            "created_at": created_at
+        })),
+        Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
