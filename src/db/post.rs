@@ -1,7 +1,7 @@
 use crate::db::errors::PostError;
 use burrow_db::db_call;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
-use uuid::Uuid;
 
 pub struct PostHandler {}
 
@@ -26,17 +26,15 @@ impl PostHandler {
         token: &str,
         post_content: &str,
         image_url: &str,
-    ) -> Result<(Uuid, String, String, String), PostError> {
+    ) -> Result<DateTime<Utc>, PostError> {
         db_call!(
             pool   = pool,
-            query  = sqlx::query_as(r#"SELECT created_at FROM post.create_post($1, $2, $3)"#),
+            query  = sqlx::query_scalar(r#"SELECT create_post($1, $2, $3)"#),
             binds  = [token, post_content, image_url],
             errors = {
                 "23502" => PostError::TokenNotFound
             },
-                fallback = |err| PostError::Db(err)
-
-
+            fallback = PostError::Db
         )
     }
 }
