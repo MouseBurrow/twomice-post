@@ -14,3 +14,4 @@ sqlx = { version = "0.9.0-alpha.1", features = ["postgres", "runtime-tokio", "ma
 tokio = { version = "1.48.0", features = ["rt", "rt-multi-thread", "macros"] }
 utils = { path = "../../utils" }
 uuid = { version = "1.18.1", features = ["serde"] }
+actix-web = "4.12.1"
