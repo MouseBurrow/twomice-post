@@ -1,5 +1,5 @@
 #[derive(Debug)]
 pub enum PostError {
-    UserNotFound,
+    TokenNotFound,
     Db(sqlx::Error),
 }

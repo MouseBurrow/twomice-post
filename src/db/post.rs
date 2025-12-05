@@ -1,3 +1,5 @@
+use crate::db::errors::PostError;
+use burrow_db::db_call;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -21,17 +23,20 @@ impl PostHandler {
     /// * `AuthError::Db` - If there was an unexpected error!
     pub async fn create_post(
         pool: &PgPool,
-        user_id: Uuid,
+        token: &str,
         post_content: &str,
         image_url: &str,
-    ) -> Result<(String, uuid), AuthError> {
+    ) -> Result<(Uuid, String, String, String), PostError> {
         db_call!(
             pool   = pool,
             query  = sqlx::query_as(r#"SELECT created_at FROM post.create_post($1, $2, $3)"#),
-            binds  = [user_id, post_content, image_url],
+            binds  = [token, post_content, image_url],
             errors = {
-                "23505" => AuthError::UsernameExists
-            }
+                "23502" => PostError::TokenNotFound
+            },
+                fallback = |err| PostError::Db(err)
+
+
         )
     }
 }
