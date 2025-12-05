@@ -1,6 +1,6 @@
+use crate::db::errors::PostError;
+use burrow_db::db_call;
 use sqlx::PgPool;
-use utils::db_call;
-use utils::errors::AuthError;
 use uuid::Uuid;
 
 pub struct PostHandler {}
@@ -25,11 +25,12 @@ impl PostHandler {
         user_id: Uuid,
         post_content: &str,
         image_url: &str,
-    ) -> Result<(Uuid, String), AuthError> {
+    ) -> Result<(Uuid, String), PostError> {
         db_call!(
             pool = pool,
             query = sqlx::query_as(r#"SELECT created_at FROM post.create_post($1, $2, $3)"#),
-            binds = [user_id, post_content, image_url]
+            binds = [user_id, post_content, image_url],
+            fallback = PostError::Db
         )
     }
 }
