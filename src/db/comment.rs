@@ -28,15 +28,18 @@ impl CommentHandler {
         comment_content: &str,
         post_id: Uuid,
     ) -> Result<DateTime<Utc>, PostError> {
-        db_call!(
+        let er = db_call!(
             pool   = pool,
             query  = sqlx::query_scalar(r#"SELECT comment_on_post($1, $2, $3)"#),
             binds  = [token, post_id, comment_content],
             errors = {
-                "CNP-00" => PostError::TokenNotFound,
-                "CNP-01" => PostError::PostNotFound
+                "CNP00" => PostError::TokenNotFound,
+                "CNP01" => PostError::PostNotFound
             },
             fallback = PostError::Db
-        )
+        );
+        println!("{er:?}");
+
+        er
     }
 }

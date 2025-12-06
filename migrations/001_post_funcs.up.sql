@@ -17,7 +17,7 @@ BEGIN
     WHERE session_token = token;
 
     IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid token' USING ERRCODE = '23502';
+        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'CP000';
     END IF;
 
     -- Insert new post and return full row
@@ -54,11 +54,11 @@ BEGIN
     WHERE id = existing_post_id;
 
     IF new_post_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid post' USING ERRCODE = 'CNP-01';
+        RAISE EXCEPTION 'Invalid post' USING ERRCODE = 'CNP01';
     END IF;
 
     IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'CNP-00';
+        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'CNP00';
     END IF;
 
     INSERT INTO comments as c (user_id, content, post_id, is_reply)

@@ -32,7 +32,7 @@ impl PostHandler {
             query  = sqlx::query_scalar(r#"SELECT create_post($1, $2, $3)"#),
             binds  = [token, post_content, image_url],
             errors = {
-                "23502" => PostError::TokenNotFound
+                "CP000" => PostError::TokenNotFound
             },
             fallback = PostError::Db
         )
