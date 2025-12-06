@@ -1,11 +1,11 @@
-use crate::services::comment::add_comment;
-use crate::services::post::post;
+use crate::routes::comment::add_comment;
+use crate::routes::post::post;
 
 use actix_web::{web, App, HttpServer};
 use config::launch_service;
 
 mod db;
-mod services;
+mod routes;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
