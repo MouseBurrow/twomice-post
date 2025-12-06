@@ -1,5 +1,7 @@
-#[derive(Debug)]
-pub enum PostError {
-    TokenNotFound,
-    Db(sqlx::Error),
-}
+use burrow_db::define_errors;
+
+define_errors!(
+    PostError {
+        TokenNotFound => "23502",
+    }
+);
