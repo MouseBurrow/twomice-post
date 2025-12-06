@@ -1,7 +1,6 @@
 use crate::routes::comment::add_comment;
 use crate::routes::post::post;
 
-use actix_web::{web, App, HttpServer};
 use config::launch_service;
 
 mod db;
