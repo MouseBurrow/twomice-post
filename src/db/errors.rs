@@ -2,6 +2,7 @@ use burrow_db::define_errors;
 
 define_errors!(
     PostError {
-        TokenNotFound => "23502",
+        TokenNotFound => "P0000",
+        PostNotFound => "P0001"
     }
 );
