@@ -1,3 +1,2 @@
 pub(crate) mod comment;
-pub(crate) mod errors;
 pub(crate) mod post;

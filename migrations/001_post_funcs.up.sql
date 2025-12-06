@@ -28,3 +28,47 @@ BEGIN
     RETURN new_created_at;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION comment_on_post(
+    token TEXT,
+    existing_post_id UUID,
+    content TEXT
+)
+    RETURNS timestamptz
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    existing_user_id UUID;
+    new_post_id      UUID;
+    new_created_at   TIMESTAMPTZ;
+BEGIN
+    SELECT account_id
+    INTO existing_user_id
+    FROM auth.sessions
+    WHERE session_token = token;
+
+    SELECT id
+    INTO new_post_id
+    FROM post.posts
+    WHERE id = existing_post_id;
+
+    IF new_post_id IS NULL THEN
+        RAISE EXCEPTION 'Invalid post' USING ERRCODE = 'CNP-01';
+    END IF;
+
+    IF existing_user_id IS NULL THEN
+        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'CNP-00';
+    END IF;
+
+    INSERT INTO comments as c (user_id, content, post_id, is_reply)
+    VALUES (existing_user_id, content, new_post_id, FALSE)
+    RETURNING created_at INTO new_created_at;
+
+    RETURN new_created_at;
+END;
+$$
+
+
+
+
