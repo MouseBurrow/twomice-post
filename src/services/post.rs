@@ -14,7 +14,7 @@ pub struct PostRequest {
     pub image_url: String,
 }
 
-#[post("post/post")]
+#[post("/post/post")]
 pub async fn post(
     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
     body: web::Json<PostRequest>,

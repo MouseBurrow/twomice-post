@@ -1,64 +1,63 @@
-use crate::db::comment::CommentHandler;
-use crate::db::errors::PostError;
-use crate::db::post::PostHandler;
-use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
+use crate::services::comment::add_comment;
+use crate::services::post::post;
+
+use actix_web::{post, web, App, HttpServer, Responder};
 use config::Config;
 use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
-use uuid::Uuid;
 
 mod db;
 mod services;
 
-#[derive(Deserialize)]
-pub struct PostRequest {
-    pub token: String,
-    pub post_content: String,
-    pub image_url: String,
-}
-
-#[derive(Deserialize)]
-pub struct CommentRequest {
-    pub token: String,
-    pub comment_content: String,
-    pub post_id: Uuid,
-}
-#[post("/post")]
-async fn post(
-    pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
-    body: web::Json<PostRequest>,
-) -> impl Responder {
-    let token = &body.token;
-    let post_content = &body.post_content;
-    let image_url = &body.image_url;
-
-    match PostHandler::create_post(&pool, token, post_content, image_url).await {
-        Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
-            "created_at": created_at
-        })),
-        Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
-}
-
-#[post("/comment")]
-async fn add_comment(
-    pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
-    body: web::Json<CommentRequest>,
-) -> impl Responder {
-    let token = &body.token;
-    let comment_content = &body.comment_content;
-    let post_id = &body.post_id;
-
-    match CommentHandler::add_comment(&pool, token, comment_content, *post_id).await {
-        Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
-            "created_at": created_at
-        })),
-        Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
-}
+// #[derive(Deserialize)]
+// pub struct PostRequest {
+//     pub token: String,
+//     pub post_content: String,
+//     pub image_url: String,
+// }
+//
+// #[derive(Deserialize)]
+// pub struct CommentRequest {
+//     pub token: String,
+//     pub comment_content: String,
+//     pub post_id: Uuid,
+// }
+// #[post("/post")]
+// async fn post(
+//     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
+//     body: web::Json<PostRequest>,
+// ) -> impl Responder {
+//     let token = &body.token;
+//     let post_content = &body.post_content;
+//     let image_url = &body.image_url;
+//
+//     match PostHandler::create_post(&pool, token, post_content, image_url).await {
+//         Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
+//             "created_at": created_at
+//         })),
+//         Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
+//         Err(_) => HttpResponse::InternalServerError().finish(),
+//     }
+// }
+//
+// #[post("/comment")]
+// async fn add_comment(
+//     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
+//     body: web::Json<CommentRequest>,
+// ) -> impl Responder {
+//     let token = &body.token;
+//     let comment_content = &body.comment_content;
+//     let post_id = &body.post_id;
+//
+//     match CommentHandler::add_comment(&pool, token, comment_content, *post_id).await {
+//         Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
+//             "created_at": created_at
+//         })),
+//         Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
+//         Err(_) => HttpResponse::InternalServerError().finish(),
+//     }
+// }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

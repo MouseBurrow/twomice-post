@@ -14,7 +14,7 @@ pub struct CommentRequest {
     pub post_id: Uuid,
 }
 
-#[post("post/comment")]
+#[post("/post/comment")]
 pub async fn add_comment(
     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
     body: web::Json<CommentRequest>,
