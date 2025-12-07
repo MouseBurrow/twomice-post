@@ -35,4 +35,18 @@ impl CommentHandler {
             error = PostError
         )
     }
+
+    pub async fn reply_comment(
+        pool: &PgPool,
+        token: &str,
+        comment_content: &str,
+        comment_id: Uuid,
+    ) -> Result<DateTime<Utc>, PostError> {
+        db_call!(
+            pool = pool,
+            query = sqlx::query_scalar(r#"SELECT reply_a_comment($1, $2, $3)"#),
+            binds = [token, comment_id, comment_content],
+            error = PostError
+        )
+    }
 }
