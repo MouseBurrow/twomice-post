@@ -9,7 +9,7 @@ mod routes;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     launch_service!(
-        service: "POST",
+        service: "post",
         routes: [post, add_comment, reply_comment]
     );
     Ok(())
