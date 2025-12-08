@@ -2,6 +2,7 @@ use crate::db::errors::PostError;
 use burrow_db::db_call;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use uuid::Uuid;
 
 pub struct PostHandler {}
 
@@ -23,14 +24,14 @@ impl PostHandler {
     /// * `AuthError::Db` - If there was an unexpected error!
     pub async fn create_post(
         pool: &PgPool,
-        token: &str,
+        user_id: Uuid,
         post_content: &str,
         image_url: &str,
     ) -> Result<DateTime<Utc>, PostError> {
         db_call!(
             pool = pool,
             query = sqlx::query_scalar(r#"SELECT create_post($1, $2, $3)"#),
-            binds = [token, post_content, image_url],
+            binds = [user_id, post_content, image_url],
             error = PostError
         )
     }

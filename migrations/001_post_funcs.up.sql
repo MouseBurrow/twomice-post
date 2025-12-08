@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION create_post(
-    token TEXT,
+    new_user_id UUID,
     new_post_content TEXT,
     new_image_url TEXT
 )
@@ -14,10 +14,10 @@ BEGIN
     SELECT account_id
     INTO existing_user_id
     FROM auth.sessions
-    WHERE session_token = token;
+    WHERE account_id = new_user_id;
 
     IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'P0000';
+        RAISE EXCEPTION 'Invalid id' USING ERRCODE = 'P0000';
     END IF;
 
     -- Insert new post and return full row
@@ -30,7 +30,7 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION comment_on_post(
-    token TEXT,
+    new_user_id UUID,
     existing_post_id UUID,
     content TEXT
 )
@@ -46,7 +46,7 @@ BEGIN
     SELECT account_id
     INTO existing_user_id
     FROM auth.sessions
-    WHERE session_token = token;
+    WHERE account_id = new_user_id;
 
     SELECT id
     INTO new_post_id
@@ -58,7 +58,7 @@ BEGIN
     END IF;
 
     IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'P0000';
+        RAISE EXCEPTION 'Invalid id' USING ERRCODE = 'P0000';
     END IF;
 
     INSERT INTO comments as c (user_id, content, post_id, is_reply)
@@ -70,7 +70,7 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION reply_a_comment(
-    token TEXT,
+    new_user_id UUID,
     existing_comment_id UUID,
     content TEXT
 )
@@ -87,10 +87,10 @@ BEGIN
     SELECT account_id
     INTO existing_user_id
     FROM auth.sessions
-    WHERE session_token = token;
+    WHERE account_id = new_user_id;
 
     IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid token' USING ERRCODE = 'P0000';
+        RAISE EXCEPTION 'Invalid id' USING ERRCODE = 'P0000';
     END IF;
 
     SELECT id

@@ -24,28 +24,28 @@ impl CommentHandler {
     /// * `PostError::Db` - If there was an unexpected error!
     pub async fn add_comment(
         pool: &PgPool,
-        token: &str,
+        user_id: Uuid,
         comment_content: &str,
         post_id: Uuid,
     ) -> Result<DateTime<Utc>, PostError> {
         db_call!(
             pool = pool,
             query = sqlx::query_scalar(r#"SELECT comment_on_post($1, $2, $3)"#),
-            binds = [token, post_id, comment_content],
+            binds = [user_id, post_id, comment_content],
             error = PostError
         )
     }
 
     pub async fn reply_comment(
         pool: &PgPool,
-        token: &str,
+        user_id: Uuid,
         comment_content: &str,
         comment_id: Uuid,
     ) -> Result<DateTime<Utc>, PostError> {
         db_call!(
             pool = pool,
             query = sqlx::query_scalar(r#"SELECT reply_a_comment($1, $2, $3)"#),
-            binds = [token, comment_id, comment_content],
+            binds = [user_id, comment_id, comment_content],
             error = PostError
         )
     }
