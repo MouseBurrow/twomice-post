@@ -38,7 +38,7 @@ impl CommentHandler {
 
     pub async fn reply_comment(
         pool: &PgPool,
-        user_id: &Uuid,
+        user_id: Uuid,
         comment_content: &str,
         comment_id: Uuid,
     ) -> Result<DateTime<Utc>, PostError> {

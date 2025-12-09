@@ -24,7 +24,7 @@ impl PostHandler {
     /// * `AuthError::Db` - If there was an unexpected error!
     pub async fn create_post(
         pool: &PgPool,
-        user_id: &Uuid,
+        user_id: Uuid,
         post_content: &str,
         image_url: &str,
     ) -> Result<DateTime<Utc>, PostError> {

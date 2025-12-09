@@ -17,11 +17,10 @@ pub async fn post(
     user_id: UserId,
     body: web::Json<PostBody>,
 ) -> impl Responder {
-    let user_id = &user_id.0;
     let post_content = &body.post_content;
     let image_url = &body.image_url;
 
-    match PostHandler::create_post(&app.pool, user_id, post_content, image_url).await {
+    match PostHandler::create_post(&app.pool, user_id.into(), post_content, image_url).await {
         Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
             "created_at": created_at
         })),

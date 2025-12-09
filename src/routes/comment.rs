@@ -45,11 +45,10 @@ pub async fn reply_comment(
     user_id: UserId,
     body: web::Json<ReplyBody>,
 ) -> impl Responder {
-    let user_id = &user_id.0;
     let comment_content = &body.comment_content;
     let comment_id = &body.comment_id;
 
-    match CommentHandler::reply_comment(&pool, user_id, comment_content, *comment_id).await {
+    match CommentHandler::reply_comment(&pool, user_id.into(), comment_content, *comment_id).await {
         Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
             "created_at": created_at
         })),
