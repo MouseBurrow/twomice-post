@@ -1,7 +1,8 @@
 use crate::db::comment::CommentHandler;
 use crate::db::errors::PostError;
-use actix_web::{post, web, FromRequest, HttpResponse, Responder};
+use actix_web::{post, web, HttpResponse, Responder};
 use config::app_data::AppData;
+use custom_headers::user_id::UserId;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -22,7 +23,7 @@ pub struct ReplyRequest {
 #[post("/post/comment")]
 pub async fn add_comment(
     app: web::Data<AppData>,
-    user_id: crate::routes::post::UserId,
+    user_id: UserId,
     body: web::Json<CommentRequest>,
 ) -> impl Responder {
     let user_id = &user_id.0;
@@ -43,7 +44,7 @@ pub async fn add_comment(
 #[post("/post/reply")]
 pub async fn reply_comment(
     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
-    user_id: crate::routes::post::UserId,
+    user_id: UserId,
     body: web::Json<ReplyRequest>,
 ) -> impl Responder {
     let user_id = &user_id.0;

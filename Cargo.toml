@@ -8,6 +8,7 @@ anyhow = "1.0.100"
 burrow_db = { path = "../../shared/burrow_db" }
 chrono = { version = "0.4.42", features = ["serde"] }
 config = { path = "../../shared/config" }
+custom_headers = { path = "../../shared/custom_headers" }
 env_logger = "0.11.8"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.9.0-alpha.1", features = ["postgres", "runtime-tokio", "macros", "uuid", "chrono", "migrate", "tls-native-tls"] }
