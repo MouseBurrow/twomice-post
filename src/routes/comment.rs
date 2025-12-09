@@ -7,24 +7,22 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
-pub struct CommentRequest {
-    pub token: String,
-    pub comment_content: String,
-    pub post_id: Uuid,
+struct CommentBody {
+    comment_content: String,
+    post_id: Uuid,
 }
 
 #[derive(Deserialize)]
-pub struct ReplyRequest {
-    pub token: String,
-    pub comment_content: String,
-    pub comment_id: Uuid,
+struct ReplyBody {
+    comment_content: String,
+    comment_id: Uuid,
 }
 
 #[post("/post/comment")]
 pub async fn add_comment(
     app: web::Data<AppData>,
     user_id: UserId,
-    body: web::Json<CommentRequest>,
+    body: web::Json<CommentBody>,
 ) -> impl Responder {
     let user_id = &user_id.0;
     let comment_content = &body.comment_content;
@@ -45,7 +43,7 @@ pub async fn add_comment(
 pub async fn reply_comment(
     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
     user_id: UserId,
-    body: web::Json<ReplyRequest>,
+    body: web::Json<ReplyBody>,
 ) -> impl Responder {
     let user_id = &user_id.0;
     let comment_content = &body.comment_content;

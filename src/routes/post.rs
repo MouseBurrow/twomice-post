@@ -1,15 +1,14 @@
 use crate::db::errors::PostError;
 use crate::db::post::PostHandler;
-use actix_web::http::header::{Header, TryIntoHeaderValue};
-use actix_web::{post, web, FromRequest, HttpResponse, Responder};
+use actix_web::{post, web, HttpResponse, Responder};
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub struct PostBody {
-    pub post_content: String,
-    pub image_url: String,
+struct PostBody {
+    post_content: String,
+    image_url: String,
 }
 
 #[post("/post")]
@@ -27,6 +26,6 @@ pub async fn post(
             "created_at": created_at
         })),
         Err(PostError::UserNotFound) => HttpResponse::NotFound().body("User not found!"),
-        Err(e) => HttpResponse::InternalServerError().finish(),
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
