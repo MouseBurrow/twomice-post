@@ -19,12 +19,12 @@ impl CommentHandler {
     /// Time of creation
     ///
     /// # Errors
-    /// * `PostError::TokenNotFound` - An error indicating that the the given token can't be found
-    /// * `PostError::PostNotFound` - An error indicating that the the given post id can't be found
+    /// * `PostError::TokenNotFound` - An error indicating that the given token can't be found
+    /// * `PostError::PostNotFound` - An error indicating that the given post id can't be found
     /// * `PostError::Db` - If there was an unexpected error!
     pub async fn add_comment(
         pool: &PgPool,
-        user_id: Uuid,
+        user_id: &Uuid,
         comment_content: &str,
         post_id: Uuid,
     ) -> Result<DateTime<Utc>, PostError> {
@@ -38,7 +38,7 @@ impl CommentHandler {
 
     pub async fn reply_comment(
         pool: &PgPool,
-        user_id: Uuid,
+        user_id: &Uuid,
         comment_content: &str,
         comment_id: Uuid,
     ) -> Result<DateTime<Utc>, PostError> {

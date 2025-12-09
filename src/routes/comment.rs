@@ -1,6 +1,7 @@
 use crate::db::comment::CommentHandler;
 use crate::db::errors::PostError;
-use actix_web::{post, web, HttpResponse, Responder};
+use actix_web::{post, web, FromRequest, HttpResponse, Responder};
+use config::app_data::AppData;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -20,18 +21,19 @@ pub struct ReplyRequest {
 
 #[post("/post/comment")]
 pub async fn add_comment(
-    pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
+    app: web::Data<AppData>,
+    user_id: crate::routes::post::UserId,
     body: web::Json<CommentRequest>,
 ) -> impl Responder {
-    let token = &body.token;
+    let user_id = &user_id.0;
     let comment_content = &body.comment_content;
     let post_id = &body.post_id;
 
-    match CommentHandler::add_comment(&pool, token, comment_content, *post_id).await {
+    match CommentHandler::add_comment(&app.pool, user_id, comment_content, *post_id).await {
         Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
             "created_at": created_at
         })),
-        Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
+        Err(PostError::UserNotFound) => HttpResponse::NotFound().body("Token not found!"),
         Err(PostError::PostNotFound) => HttpResponse::NotFound().body("Post not found!"),
 
         Err(_) => HttpResponse::InternalServerError().finish(),
@@ -41,17 +43,18 @@ pub async fn add_comment(
 #[post("/post/reply")]
 pub async fn reply_comment(
     pool: web::Data<sqlx::Pool<sqlx::Postgres>>,
+    user_id: crate::routes::post::UserId,
     body: web::Json<ReplyRequest>,
 ) -> impl Responder {
-    let token = &body.token;
+    let user_id = &user_id.0;
     let comment_content = &body.comment_content;
     let comment_id = &body.comment_id;
 
-    match CommentHandler::reply_comment(&pool, token, comment_content, *comment_id).await {
+    match CommentHandler::reply_comment(&pool, user_id, comment_content, *comment_id).await {
         Ok(created_at) => HttpResponse::Ok().json(serde_json::json!({
             "created_at": created_at
         })),
-        Err(PostError::TokenNotFound) => HttpResponse::NotFound().body("Token not found!"),
+        Err(PostError::UserNotFound) => HttpResponse::NotFound().body("Token not found!"),
         Err(PostError::PostNotFound) => HttpResponse::NotFound().body("Post not found!"),
         Err(PostError::CommentNotFound) => HttpResponse::NotFound().body("Comment not found!"),
         Err(_) => HttpResponse::InternalServerError().finish(),
