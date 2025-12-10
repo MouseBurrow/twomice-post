@@ -1,125 +1,128 @@
+CREATE OR REPLACE FUNCTION create_topic(
+    p_name TEXT,
+    p_description TEXT
+)
+    RETURNS VOID
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    INSERT INTO topics (name, description)
+    VALUES (p_name, p_description);
+EXCEPTION
+    WHEN unique_violation THEN
+        RAISE EXCEPTION 'Topic name already exists' USING ERRCODE = '23505';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_topic(
+    p_name TEXT
+)
+    RETURNS TEXT
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    topic_desc TEXT;
+BEGIN
+    SELECT description INTO topic_desc FROM topics WHERE name = p_name;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    RETURN topic_desc;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION create_post(
-    new_user_id UUID,
-    new_post_content TEXT,
-    new_image_url TEXT
+    p_creator_id UUID,
+    p_topic_id UUID,
+    p_title TEXT,
+    p_slug TEXT,
+    p_content TEXT,
+    p_image_url TEXT
 )
-    RETURNS TIMESTAMPTZ
+    RETURNS TEXT
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
-    existing_user_id UUID;
-    new_created_at   TIMESTAMPTZ;
+    final_slug TEXT;
 BEGIN
-    SELECT account_id
-    INTO existing_user_id
-    FROM auth.sessions
-    WHERE account_id = new_user_id;
+    LOOP
+        final_slug := p_slug || '-' || extensions.random_b62_5();
 
-    IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid id' USING ERRCODE = 'P0000';
-    END IF;
+        BEGIN
+            INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
+            VALUES (p_creator_id, p_topic_id, p_title, final_slug, p_content, p_image_url);
 
-    -- Insert new post and return full row
-    INSERT INTO posts as p (user_id, content, image_url)
-    VALUES (existing_user_id, new_post_content, new_image_url)
-    RETURNING created_at INTO new_created_at;
-
-    RETURN new_created_at;
+            RETURN final_slug;
+        EXCEPTION
+            WHEN unique_violation THEN
+                CONTINUE;
+        END;
+    END LOOP;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION comment_on_post(
-    new_user_id UUID,
-    existing_post_id UUID,
-    content TEXT
+CREATE OR REPLACE FUNCTION create_comment(
+    p_sender_id UUID,
+    p_post_id UUID,
+    p_content TEXT
 )
-    RETURNS timestamptz
+    RETURNS TEXT
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
-    existing_user_id UUID;
-    new_post_id      UUID;
-    new_created_at   TIMESTAMPTZ;
+    final_hash TEXT;
 BEGIN
-    SELECT account_id
-    INTO existing_user_id
-    FROM auth.sessions
-    WHERE account_id = new_user_id;
+    LOOP
+        final_hash := extensions.random_b62_5();
 
-    SELECT id
-    INTO new_post_id
-    FROM post.posts
-    WHERE id = existing_post_id;
+        BEGIN
+            INSERT INTO comments (hash, sender_id, post_id, content)
+            VALUES (final_hash, p_sender_id, p_post_id, p_content);
 
-    IF new_post_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid post' USING ERRCODE = 'P0001';
-    END IF;
-
-    IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid id' USING ERRCODE = 'P0000';
-    END IF;
-
-    INSERT INTO comments as c (user_id, content, post_id, is_reply)
-    VALUES (existing_user_id, content, new_post_id, FALSE)
-    RETURNING created_at INTO new_created_at;
-
-    RETURN new_created_at;
+            RETURN final_hash;
+        EXCEPTION
+            WHEN unique_violation THEN
+                CONTINUE;
+        END;
+    END LOOP;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION reply_a_comment(
-    new_user_id UUID,
-    existing_comment_id UUID,
-    content TEXT
+CREATE OR REPLACE FUNCTION create_reply(
+    p_sender_id UUID,
+    p_post_id UUID,
+    p_comment_id UUID,
+    p_reply_id UUID,
+    p_content TEXT
 )
-    RETURNS timestamptz
+    RETURNS TEXT
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
-    existing_user_id UUID;
-    existing_post_id UUID;
-    new_comment_id   UUID;
-    new_created_at   TIMESTAMPTZ;
+    final_hash TEXT;
 BEGIN
-    SELECT account_id
-    INTO existing_user_id
-    FROM auth.sessions
-    WHERE account_id = new_user_id;
+    LOOP
+        final_hash := extensions.random_b62_5();
 
-    IF existing_user_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid id' USING ERRCODE = 'P0000';
-    END IF;
+        BEGIN
+            INSERT INTO replies (hash, sender_id, post_id, comment_id, reply_id, content)
+            VALUES (final_hash, p_sender_id, p_post_id, p_comment_id, p_reply_id, p_content);
 
-    SELECT id
-    INTO new_comment_id
-    FROM post.comments
-    WHERE id = existing_comment_id;
+            RETURN final_hash;
 
-    IF existing_post_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid post' USING ERRCODE = 'P0001';
-    END IF;
-
-    SELECT post_id
-    INTO existing_post_id
-    FROM post.comments
-    WHERE id = existing_post_id;
-
-    IF existing_comment_id IS NULL THEN
-        RAISE EXCEPTION 'Invalid comment' USING ERRCODE = 'P0002';
-    END IF;
-
-
-    INSERT INTO comments as c (user_id, content, post_id, is_reply, reply_id)
-    VALUES (existing_user_id, content, existing_post_id, TRUE, new_comment_id)
-    RETURNING created_at INTO new_created_at;
-
-    RETURN new_created_at;
+        EXCEPTION
+            WHEN unique_violation THEN
+                CONTINUE;
+        END;
+    END LOOP;
 END;
 $$;
-
-
 
 

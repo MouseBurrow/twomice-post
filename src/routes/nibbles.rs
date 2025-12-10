@@ -9,7 +9,7 @@ struct PostBody {
     image_url: String,
 }
 
-#[post("/bur/{topic}/nib")]
+#[post("/mcf/{topic}/nib")]
 pub async fn create_post(
     app: web::Data<AppData>,
     path: web::Path<String>,
@@ -29,7 +29,7 @@ pub async fn create_post(
     // }
 }
 
-#[get("/bur/{topic}/nib/{post_id}")]
+#[get("/mcf/{topic}/nib/{post_id}")]
 pub async fn get_post(app: web::Data<AppData>, path: web::Path<(String, String)>) -> HttpResponse {
     todo!("This path is for RECEIVING the post information.")
 }

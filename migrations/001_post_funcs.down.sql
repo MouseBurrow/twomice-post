@@ -1,3 +1,6 @@
 -- Drop procedures
+DROP FUNCTION IF EXISTS create_topic;
+DROP FUNCTION IF EXISTS get_topic;
 DROP FUNCTION IF EXISTS create_post;
-DROP FUNCTION IF EXISTS comment_on_post;
+DROP FUNCTION IF EXISTS create_comment;
+DROP FUNCTION IF EXISTS create_reply;

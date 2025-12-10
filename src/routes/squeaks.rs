@@ -11,7 +11,7 @@ struct CommentBody {
     // Probably a lot more stuff here
 }
 
-#[post("/bur/{topic}/nib/{post}/sqk")]
+#[post("/mcf/{topic}/nib/{post}/sqk")]
 pub async fn create_comment(
     app: web::Data<AppData>,
     path: web::Path<(String, String)>,
@@ -33,7 +33,7 @@ pub async fn create_comment(
     // }
 }
 
-#[get("/bur/{topic}/nib/{post}/sqk")]
+#[get("/mcf/{topic}/nib/{post}/sqk")]
 pub async fn get_comments(
     app: web::Data<AppData>,
     path: web::Path<(String, String, String)>,

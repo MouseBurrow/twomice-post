@@ -10,7 +10,7 @@ struct ReplyBody {
     comment_id: Uuid,
 }
 
-#[post("/bur/{topic}/nib/{post}/sqk/{comment}/echo")]
+#[post("/mcf/{topic}/nib/{post}/sqk/{comment}/echoes")]
 pub async fn create_reply(
     app: web::Data<AppData>,
     path: web::Path<(String, String, String)>,
@@ -20,7 +20,7 @@ pub async fn create_reply(
     todo!("This path is for CREATING the reply.")
 }
 
-#[get("/bur/{topic}/nib/{post}/sqk{comment}/echo")]
+#[get("/mcf/{topic}/nib/{post}/sqk{comment}/echoes")]
 pub async fn get_replies(
     app: web::Data<AppData>,
     path: web::Path<(String, String, String)>,
