@@ -72,7 +72,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION get_pot(
+CREATE OR REPLACE FUNCTION get_post(
     p_topic_name TEXT,
     p_post_slug TEXT
 )
