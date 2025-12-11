@@ -37,7 +37,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION create_post(
     p_creator_id UUID,
-    p_topic_id UUID,
+    p_topic_name TEXT,
     p_title TEXT,
     p_slug TEXT,
     p_content TEXT,
@@ -48,21 +48,64 @@ CREATE OR REPLACE FUNCTION create_post(
 AS
 $$
 DECLARE
-    final_slug TEXT;
+    d_topic_id   UUID;
+    d_final_slug TEXT;
 BEGIN
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
     LOOP
-        final_slug := p_slug || '-' || extensions.random_b62_5();
+        d_final_slug := p_slug || '-' || extensions.random_b62_5();
 
         BEGIN
             INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
             VALUES (p_creator_id, p_topic_id, p_title, final_slug, p_content, p_image_url);
 
-            RETURN final_slug;
+            RETURN d_final_slug;
         EXCEPTION
             WHEN unique_violation THEN
                 CONTINUE;
         END;
     END LOOP;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_pot(
+    p_topic_name TEXT,
+    p_post_slug TEXT
+)
+    RETURNS TABLE
+            (
+                title      TEXT,
+                content    TEXT,
+                image_url  TEXT,
+                created_at TIMESTAMPTZ
+            )
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    d_topic_id UUID;
+BEGIN
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    RETURN QUERY
+        SELECT p.title,
+               p.content,
+               p.image_url,
+               p.created_at
+        FROM posts p
+        WHERE p.topic_id = d_topic_id
+          AND p.slug = p_post_slug;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+    END IF;
 END;
 $$;
 

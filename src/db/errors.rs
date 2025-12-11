@@ -4,5 +4,6 @@ define_errors!(
     PostError {
         UniqueViolation => "23505",
         TopicNotFound => "P0000",
+        PostNotFound => "P0001"
     }
 );
