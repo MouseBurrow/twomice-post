@@ -1,4 +1,4 @@
-use crate::db::errors::PostError;
+use crate::utils::errors::PostError;
 use actix_web::{get, post, web, HttpResponse};
 use burrow_db::db_call;
 use chrono::{DateTime, Utc};
