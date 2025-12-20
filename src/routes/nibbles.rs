@@ -65,7 +65,7 @@ pub async fn get_all_posts(app: web::Data<AppData>, path: web::Path<String>) -> 
 
     let result: Result<Vec<PostData>, PostError> = db_call!(
         pool = &app.pool,
-        query = ALL ROW "SELECT get_all_post($1)",
+        query = ALL ROW "SELECT * FROM get_all_post($1)",
         binds = [topic_name]
     );
 
