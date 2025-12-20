@@ -52,7 +52,8 @@ BEGIN
                t.description,
                t.created_at,
                t.deleted
-        FROM topics t;
+        FROM topics t
+        ORDER BY t.created_at;
 END;
 $$;
 
@@ -165,7 +166,8 @@ BEGIN
                p.created_at,
                p.deleted
         FROM posts p
-        WHERE p.topic_id = d_topic_id;
+        WHERE p.topic_id = d_topic_id
+        ORDER BY p.created_at;
 END;
 $$;
 
@@ -240,13 +242,14 @@ BEGIN
     END IF;
 
     RETURN QUERY
-        SELECT p.sender_id,
-               p.hash,
-               p.content,
-               p.created_at,
-               p.deleted
-        FROM comments p
-        WHERE p.post_id = d_post_id;
+        SELECT c.sender_id,
+               c.hash,
+               c.content,
+               c.created_at,
+               c.deleted
+        FROM comments c
+        WHERE c.post_id = d_post_id
+        ORDER BY c.created_at;
 END;
 $$;
 
