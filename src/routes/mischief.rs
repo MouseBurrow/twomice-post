@@ -60,7 +60,7 @@ struct TopicData {
 pub async fn get_all_topics(app: web::Data<AppData>) -> HttpResponse {
     let result: Result<Vec<TopicData>, PostError> = db_call!(
         pool = &app.pool,
-        query = ALL ROW "SELECT get_all_topics()"
+        query = ALL ROW "SELECT * FROM get_all_topics()"
     );
 
     match result {

@@ -59,7 +59,7 @@ struct PostData {
     deleted: bool,
 }
 
-#[get("/mcf/{topic}")]
+#[get("/mcf/{topic}/nib")]
 pub async fn get_all_posts(app: web::Data<AppData>, path: web::Path<String>) -> HttpResponse {
     let topic_name = path.into_inner();
 

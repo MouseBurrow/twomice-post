@@ -48,7 +48,11 @@ AS
 $$
 BEGIN
     RETURN QUERY
-        SELECT name, description, created_at, deleted FROM topics;
+        SELECT t.name,
+               t.description,
+               t.created_at,
+               t.deleted
+        FROM topics t;
 END;
 $$;
 
