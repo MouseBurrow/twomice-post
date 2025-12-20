@@ -171,29 +171,82 @@ $$;
 
 CREATE OR REPLACE FUNCTION create_comment(
     p_sender_id UUID,
-    p_post_id UUID,
+    p_topic_name TEXT,
+    p_post_slug TEXT,
     p_content TEXT
 )
-    RETURNS TEXT
+    RETURNS VOID
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
-    final_hash TEXT;
+    d_topic_id   UUID;
+    d_post_id    UUID;
+    d_final_hash TEXT;
 BEGIN
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    SELECT id INTO d_post_id FROM posts WHERE topic_id = d_topic_id AND slug = p_post_slug;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
     LOOP
-        final_hash := extensions.random_b62_5();
+        d_final_hash := extensions.random_b62_5();
 
         BEGIN
             INSERT INTO comments (hash, sender_id, post_id, content)
-            VALUES (final_hash, p_sender_id, p_post_id, p_content);
+            VALUES (d_final_hash, p_sender_id, d_post_id, p_content);
 
-            RETURN final_hash;
+            RETURN;
         EXCEPTION
             WHEN unique_violation THEN
                 CONTINUE;
         END;
     END LOOP;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_all_comments(
+    p_topic_name TEXT,
+    p_post_slug TEXT
+)
+    RETURNS TABLE
+            (
+                sender_id  UUID,
+                hash       VARCHAR(5),
+                content    TEXT,
+                created_at TIMESTAMPTZ,
+                deleted    BOOLEAN
+            )
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    d_topic_id UUID;
+    d_post_id  UUID;
+BEGIN
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    SELECT id INTO d_post_id FROM posts WHERE topic_id = d_topic_id AND slug = p_post_slug;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN QUERY
+        SELECT p.sender_id,
+               p.hash,
+               p.content,
+               p.created_at,
+               p.deleted
+        FROM comments p
+        WHERE p.post_id = d_post_id;
 END;
 $$;
 

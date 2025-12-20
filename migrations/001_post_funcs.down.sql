@@ -6,4 +6,5 @@ DROP FUNCTION IF EXISTS create_post;
 DROP FUNCTION IF EXISTS get_post;
 DROP FUNCTION IF EXISTS get_all_post;
 DROP FUNCTION IF EXISTS create_comment;
+DROP FUNCTION IF EXISTS get_all_comments;
 DROP FUNCTION IF EXISTS create_reply;
