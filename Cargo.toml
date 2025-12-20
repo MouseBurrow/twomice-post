@@ -10,6 +10,7 @@ burrow_db = { path = "../../shared/burrow_db" }
 chrono = { version = "0.4.42", features = ["serde"] }
 config = { path = "../../shared/config" }
 custom_headers = { path = "../../shared/custom_headers" }
+easy_db = { path = "../../shared/easy_db" }
 env_logger = "0.11.8"
 log = "0.4.28"
 regex = "1.12.2"

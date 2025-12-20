@@ -1,9 +1,12 @@
 use crate::utils::errors::PostError;
 use actix_web::{get, post, web, HttpResponse};
-use burrow_db::db_call;
+use chrono::{DateTime, Utc};
 use config::app_data::AppData;
-use serde::Deserialize;
+use custom_headers::user_id::UserId;
+use easy_db::db_call;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::FromRow;
 
 #[derive(Deserialize)]
 struct TopicBody {
@@ -12,7 +15,11 @@ struct TopicBody {
 }
 
 #[post("/mcf")]
-pub async fn create_topic(app: web::Data<AppData>, body: web::Json<TopicBody>) -> HttpResponse {
+pub async fn create_topic(
+    app: web::Data<AppData>,
+    body: web::Json<TopicBody>,
+    _user_id: UserId,
+) -> HttpResponse {
     let name = &body.name;
     let desc = &body.description;
 
@@ -24,11 +31,10 @@ pub async fn create_topic(app: web::Data<AppData>, body: web::Json<TopicBody>) -
         }));
     }
 
-    let result = db_call!(
+    let result: Result<(), PostError> = db_call!(
         pool = &app.pool,
-        query = sqlx::query(r#"SELECT create_topic($1, $2)"#),
-        binds = [&name, &desc],
-        error = PostError
+        query = ONE COLUMN "SELECT create_topic($1, $2)",
+        binds = [&name, &desc]
     );
 
     match result {
@@ -41,25 +47,24 @@ pub async fn create_topic(app: web::Data<AppData>, body: web::Json<TopicBody>) -
     }
 }
 
-#[get("/mcf/{topic}")]
-pub async fn get_topic(app: web::Data<AppData>, path: web::Path<String>) -> HttpResponse {
-    let topic_name = path.into_inner();
+#[allow(dead_code)]
+#[derive(FromRow, Serialize)]
+struct TopicData {
+    name: String,
+    description: String,
+    created_at: DateTime<Utc>,
+    deleted: bool,
+}
 
-    let result: Result<String, PostError> = db_call!(
+#[get("/mcf")]
+pub async fn get_all_topics(app: web::Data<AppData>) -> HttpResponse {
+    let result: Result<Vec<TopicData>, PostError> = db_call!(
         pool = &app.pool,
-        query = sqlx::query_scalar(r#"SELECT get_topic($1)"#),
-        binds = [topic_name],
-        error = PostError
+        query = ALL ROW "SELECT get_all_topics()"
     );
 
     match result {
-        Ok(description) => HttpResponse::Ok().json(json!({
-            "description": description,
-        })),
-        Err(PostError::TopicNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Topic not found"
-        })),
+        Ok(all_topics) => HttpResponse::Ok().json(all_topics),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }

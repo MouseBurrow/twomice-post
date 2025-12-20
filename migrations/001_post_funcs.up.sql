@@ -35,6 +35,23 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION get_all_topics()
+    RETURNS TABLE
+            (
+                name        TEXT,
+                description TEXT,
+                created_at  TIMESTAMPTZ,
+                deleted     BOOLEAN
+            )
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    RETURN QUERY
+        SELECT name, description, created_at, deleted FROM topics;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION create_post(
     p_creator_id UUID,
     p_topic_name TEXT,
@@ -61,7 +78,7 @@ BEGIN
 
         BEGIN
             INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
-            VALUES (p_creator_id, p_topic_id, p_title, final_slug, p_content, p_image_url);
+            VALUES (p_creator_id, d_topic_id, p_title, d_final_slug, p_content, p_image_url);
 
             RETURN d_final_slug;
         EXCEPTION
@@ -79,9 +96,11 @@ CREATE OR REPLACE FUNCTION get_post(
     RETURNS TABLE
             (
                 title      TEXT,
+                slug       TEXT,
                 content    TEXT,
                 image_url  TEXT,
-                created_at TIMESTAMPTZ
+                created_at TIMESTAMPTZ,
+                deleted    BOOLEAN
             )
     LANGUAGE plpgsql
 AS
@@ -96,9 +115,11 @@ BEGIN
 
     RETURN QUERY
         SELECT p.title,
+               p.slug,
                p.content,
                p.image_url,
-               p.created_at
+               p.created_at,
+               p.deleted
         FROM posts p
         WHERE p.topic_id = d_topic_id
           AND p.slug = p_post_slug;
@@ -106,6 +127,41 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
     END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_all_post(
+    p_topic_name TEXT
+)
+    RETURNS TABLE
+            (
+                title      TEXT,
+                slug       TEXT,
+                content    TEXT,
+                image_url  TEXT,
+                created_at TIMESTAMPTZ,
+                deleted    BOOLEAN
+            )
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    d_topic_id UUID;
+BEGIN
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    RETURN QUERY
+        SELECT p.title,
+               p.slug,
+               p.content,
+               p.image_url,
+               p.created_at,
+               p.deleted
+        FROM posts p
+        WHERE p.topic_id = d_topic_id;
 END;
 $$;
 
