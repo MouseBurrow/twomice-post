@@ -40,7 +40,7 @@ pub async fn create_topic(
     match result {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(PostError::UniqueViolation) => HttpResponse::Conflict().json(json!({
-            "error": "unique_violation",
+            "error": "topic_already_exists",
             "message": "Topic already exists"
         })),
         Err(_) => HttpResponse::InternalServerError().finish(),
