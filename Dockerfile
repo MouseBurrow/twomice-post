@@ -2,15 +2,17 @@
 FROM rust:1.91 AS builder
 WORKDIR /app
 
-# Copy workspace definition first (better caching)
+# Copy manifests and shared crates
 COPY Cargo.toml Cargo.lock ./
-COPY migrator migrator
-COPY services services
-COPY shared shared
-#COPY services/post services/post
+COPY services/post/ services/post/
+COPY shared/ shared/
 
-# Build only this service
-RUN cargo build --release -p post
+# Build using cached target, copy binary to real FS
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release -p post && \
+    cp target/release/post /app/post
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -22,7 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/post /app/post
+COPY --from=builder /app/post /app/post
 
-#EXPOSE 8080
 CMD ["/app/post"]
