@@ -7,7 +7,6 @@ use easy_db::db_call;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::FromRow;
-use uuid::Uuid;
 
 #[derive(Deserialize)]
 struct CommentBody {
@@ -46,7 +45,6 @@ pub async fn create_comment(
 
 #[derive(FromRow, Serialize)]
 struct CommentData {
-    sender_id: Uuid,
     hash: String,
     content: String,
     created_at: DateTime<Utc>,

@@ -89,7 +89,7 @@ pub async fn get_post(app: web::Data<AppData>, path: web::Path<(String, String)>
 
     let result: Result<PostData, PostError> = db_call!(
         pool = &app.pool,
-        query = ONE ROW "SELECT get_post($1, $2)",
+        query = ONE ROW "SELECT * FROM get_post($1, $2)",
         binds = [topic_name, post_slug]
     );
 

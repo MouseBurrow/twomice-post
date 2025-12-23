@@ -8,3 +8,4 @@ DROP FUNCTION IF EXISTS get_all_post;
 DROP FUNCTION IF EXISTS create_comment;
 DROP FUNCTION IF EXISTS get_all_comments;
 DROP FUNCTION IF EXISTS create_reply;
+DROP FUNCTION IF EXISTS get_replies;

@@ -18,20 +18,29 @@ $$;
 CREATE OR REPLACE FUNCTION get_topic(
     p_name TEXT
 )
-    RETURNS TEXT
+    RETURNS TABLE
+            (
+                name        TEXT,
+                description TEXT,
+                created_at  TIMESTAMPTZ,
+                deleted     BOOL
+            )
     LANGUAGE plpgsql
 AS
 $$
-DECLARE
-    topic_desc TEXT;
 BEGIN
-    SELECT description INTO topic_desc FROM topics WHERE name = p_name;
+    RETURN QUERY
+        SELECT t.name,
+               t.description,
+               t.created_at,
+               t.deleted
+        FROM topics t
+        WHERE t.name = p_name
+        ORDER BY t.created_at;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
     END IF;
-
-    RETURN topic_desc;
 END;
 $$;
 
@@ -218,7 +227,6 @@ CREATE OR REPLACE FUNCTION get_all_comments(
 )
     RETURNS TABLE
             (
-                sender_id  UUID,
                 hash       VARCHAR(5),
                 content    TEXT,
                 created_at TIMESTAMPTZ,
@@ -242,8 +250,7 @@ BEGIN
     END IF;
 
     RETURN QUERY
-        SELECT c.sender_id,
-               c.hash,
+        SELECT c.hash,
                c.content,
                c.created_at,
                c.deleted
@@ -255,32 +262,100 @@ $$;
 
 CREATE OR REPLACE FUNCTION create_reply(
     p_sender_id UUID,
-    p_post_id UUID,
-    p_comment_id UUID,
-    p_reply_id UUID,
+    p_comment_hash TEXT,
+    p_post_slug TEXT,
+    p_topic_name TEXT,
     p_content TEXT
 )
-    RETURNS TEXT
+    RETURNS VOID
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
-    final_hash TEXT;
+    d_comment_id UUID;
+    d_topic_id   UUID;
+    d_post_id    UUID;
+    final_hash   TEXT;
 BEGIN
+
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    SELECT id INTO d_post_id FROM posts WHERE topic_id = d_topic_id AND slug = p_post_slug;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    SELECT id INTO d_comment_id FROM comments WHERE hash = p_comment_hash;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'comment_not_found' USING ERRCODE = 'P0002';
+    END IF;
+
+
     LOOP
         final_hash := extensions.random_b62_5();
 
         BEGIN
-            INSERT INTO replies (hash, sender_id, post_id, comment_id, reply_id, content)
-            VALUES (final_hash, p_sender_id, p_post_id, p_comment_id, p_reply_id, p_content);
+            INSERT INTO replies (hash, sender_id, post_id, comment_id, content)
+            VALUES (final_hash, p_sender_id, d_post_id, d_comment_id, p_content);
 
-            RETURN final_hash;
+            RETURN;
 
         EXCEPTION
             WHEN unique_violation THEN
                 CONTINUE;
         END;
     END LOOP;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_replies(
+    p_topic_name TEXT,
+    p_post_slug TEXT,
+    p_comment_hash TEXT
+)
+    RETURNS TABLE
+            (
+                hash       VARCHAR(5),
+                content    TEXT,
+                created_at TIMESTAMPTZ,
+                deleted    BOOLEAN
+            )
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    d_comment_id UUID;
+    d_topic_id   UUID;
+    d_post_id    UUID;
+BEGIN
+
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    SELECT id INTO d_post_id FROM posts WHERE topic_id = d_topic_id AND slug = p_post_slug;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    SELECT c.id INTO d_comment_id FROM comments as c WHERE c.hash = p_comment_hash;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'comment_not_found' USING ERRCODE = 'P0002';
+    END IF;
+
+    RETURN QUERY
+        SELECT r.hash,
+               r.content,
+               r.created_at,
+               r.deleted
+        FROM replies r
+        WHERE r.post_id = d_post_id
+          AND r.comment_id = d_comment_id
+        ORDER BY r.created_at;
 END;
 $$;
 
