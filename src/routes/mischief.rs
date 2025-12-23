@@ -68,3 +68,23 @@ pub async fn get_all_topics(app: web::Data<AppData>) -> HttpResponse {
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
+
+#[get("/mcf/{topic}")]
+pub async fn get_topic(app: web::Data<AppData>, path: web::Path<String>) -> HttpResponse {
+    let topic_name = path.into_inner();
+
+    let result: Result<TopicData, PostError> = db_call!(
+        pool = &app.pool,
+        query = ONE ROW "SELECT * FROM get_topic($1)",
+        binds = [&topic_name]
+    );
+
+    match result {
+        Ok(topic) => HttpResponse::Ok().json(topic),
+        Err(PostError::TopicNotFound) => HttpResponse::NotFound().json(json!({
+            "error": "not_found",
+            "message": "Topic not found"
+        })),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
