@@ -255,26 +255,47 @@ $$;
 
 CREATE OR REPLACE FUNCTION create_reply(
     p_sender_id UUID,
-    p_post_id UUID,
-    p_comment_id UUID,
-    p_reply_id UUID,
+    p_comment_hash TEXT,
+    p_post_slug TEXT,
+    p_topic_name TEXT,
     p_content TEXT
 )
-    RETURNS TEXT
+    RETURNS VOID
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
+    d_comment_id UUID;
+    d_topic_id UUID;
+    d_post_id  UUID;
+    d_reply_id UUID;
     final_hash TEXT;
 BEGIN
+
+    SELECT id INTO d_topic_id FROM topics WHERE name = p_topic_name;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'topic_not_found' USING ERRCODE = 'P0000';
+    END IF;
+
+    SELECT id INTO d_post_id FROM posts WHERE topic_id = d_topic_id AND slug = p_post_slug;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'post_not_found' USING ERRCODE = 'P0001';
+    END IF;
+
+    SELECT id INTO d_comment_id FROM comments WHERE hash = p_comment_hash;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'comment_not_found' USING ERRCODE = 'P0002';
+    END IF;
+
+
     LOOP
         final_hash := extensions.random_b62_5();
 
         BEGIN
-            INSERT INTO replies (hash, sender_id, post_id, comment_id, reply_id, content)
-            VALUES (final_hash, p_sender_id, p_post_id, p_comment_id, p_reply_id, p_content);
+            INSERT INTO replies (hash, sender_id, post_id, comment_id, content)
+            VALUES (final_hash, p_sender_id, d_post_id, d_comment_id,  p_content);
 
-            RETURN final_hash;
+            RETURN ;
 
         EXCEPTION
             WHEN unique_violation THEN

@@ -11,7 +11,7 @@ mod utils;
 async fn main() -> anyhow::Result<()> {
     launch_service!(
         service: "post",
-        routes: [create_topic, get_all_topics, create_post, get_post, get_all_posts, create_comment, get_all_comments, create_reply, get_replies]
+        routes: [create_topic, get_all_topics, create_post, get_post, get_all_posts, create_comment, get_all_comments, reply_reply, reply_comment]
     );
     Ok(())
 }
