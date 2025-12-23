@@ -8,8 +8,8 @@ COPY services/post/ services/post/
 COPY shared/ shared/
 
 # Build using cached target, copy binary to real FS
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target \
     cargo build --release -p post && \
     cp target/release/post /app/post
