@@ -1,11 +1,10 @@
-use crate::utils::errors::PostError;
+use crate::errors::PostError;
 use actix_web::{get, post, web, HttpResponse};
 use chrono::{DateTime, Utc};
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
 use easy_db::db_call;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sqlx::FromRow;
 
 #[derive(Deserialize)]
@@ -19,31 +18,16 @@ pub async fn create_reply(
     path: web::Path<(String, String, String)>,
     user_id: UserId,
     body: web::Json<ReplyBody>,
-) -> HttpResponse {
+) -> Result<HttpResponse, PostError> {
     let (topic_name, post_slug, comment_hash) = path.into_inner();
-    let content = &body.content;
-    let result: Result<(), PostError> = db_call!(
+
+    let _: () = db_call!(
         pool = &app.pool,
         query = ONE COLUMN "SELECT create_reply($1, $2, $3, $4, $5)",
-        binds = [user_id, comment_hash, post_slug,topic_name, content]
-    );
+        binds = [user_id, comment_hash, post_slug,topic_name, &body.content]
+    )?;
 
-    match result {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(PostError::TopicNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Topic not found"
-        })),
-        Err(PostError::PostNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Post not found"
-        })),
-        Err(PostError::CommentNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Comment not found"
-        })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
+    Ok(HttpResponse::Ok().finish())
 }
 
 // #[post("/mcf/{topic}/nib/{post}/sqk/{comment}/echoes/{reply}/echo")]
@@ -91,29 +75,14 @@ struct ReplyData {
 pub async fn get_replies(
     app: web::Data<AppData>,
     path: web::Path<(String, String, String)>,
-) -> HttpResponse {
+) -> Result<HttpResponse, PostError> {
     let (topic_name, post_slug, comment_hash) = path.into_inner();
 
-    let result: Result<Vec<ReplyData>, PostError> = db_call!(
+    let replies: Vec<ReplyData> = db_call!(
         pool = &app.pool,
         query = ALL ROW "SELECT * FROM get_replies($1, $2, $3)",
         binds = [topic_name, post_slug, comment_hash]
-    );
+    )?;
 
-    match result {
-        Ok(replies) => HttpResponse::Ok().json(replies),
-        Err(PostError::TopicNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Topic not found"
-        })),
-        Err(PostError::PostNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Post not found"
-        })),
-        Err(PostError::CommentNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Comment not found"
-        })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
+    Ok(HttpResponse::Ok().json(replies))
 }

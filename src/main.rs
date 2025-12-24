@@ -4,8 +4,8 @@ use crate::routes::nibbles::{create_post, get_all_posts, get_post};
 use crate::routes::squeaks::{create_comment, get_all_comments};
 use config::launch_service;
 
+pub(crate) mod errors;
 mod routes;
-mod utils;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

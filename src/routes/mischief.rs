@@ -1,4 +1,4 @@
-use crate::utils::errors::PostError;
+use crate::errors::PostError;
 use actix_web::{get, post, web, HttpResponse};
 use chrono::{DateTime, Utc};
 use config::app_data::AppData;
@@ -57,16 +57,13 @@ struct TopicData {
 }
 
 #[get("/mcf")]
-pub async fn get_all_topics(app: web::Data<AppData>) -> HttpResponse {
-    let result: Result<Vec<TopicData>, PostError> = db_call!(
+pub async fn get_all_topics(app: web::Data<AppData>) -> Result<HttpResponse, PostError> {
+    let all_topics: Vec<TopicData> = db_call!(
         pool = &app.pool,
         query = ALL ROW "SELECT * FROM get_all_topics()"
-    );
+    )?;
 
-    match result {
-        Ok(all_topics) => HttpResponse::Ok().json(all_topics),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
+    Ok(HttpResponse::Ok().json(all_topics))
 }
 
 #[get("/mcf/{topic}")]
