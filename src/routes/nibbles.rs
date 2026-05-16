@@ -21,12 +21,13 @@ pub async fn create_post(
     user_id: UserId,
     Json(body): Json<PostBody>,
 ) -> Result<Json<serde_json::Value>, PostError> {
+    let slug_str = slugify!(&body.title);
     let slug = service::create_post(
         &app.pool,
         user_id.into(),
         &topic_name,
         &body.title,
-        slugify!(&body.title),
+        &slug_str,
         &body.content,
         &body.image_url,
     )

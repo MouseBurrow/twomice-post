@@ -265,6 +265,7 @@ dependencies = [
 [[package]]
 name = "config"
 version = "0.1.0"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git#fef4f259fce98224af9126677b787a413d222299"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -345,6 +346,7 @@ dependencies = [
 [[package]]
 name = "custom_headers"
 version = "0.1.0"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git#fef4f259fce98224af9126677b787a413d222299"
 dependencies = [
  "axum",
  "http",
@@ -395,6 +397,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 [[package]]
 name = "easy_errors"
 version = "0.1.0"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git#fef4f259fce98224af9126677b787a413d222299"
 dependencies = [
  "axum",
  "http",
@@ -1334,6 +1337,7 @@ dependencies = [
  "slugify",
  "sqlx",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2211,6 +2215,7 @@ checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

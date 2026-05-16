@@ -18,6 +18,34 @@ fn random_b62(len: usize) -> String {
         .collect()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_b62_has_correct_length() {
+        for len in [1, 5, 10, 32] {
+            let s = random_b62(len);
+            assert_eq!(s.len(), len, "length {len}");
+        }
+    }
+
+    #[test]
+    fn random_b62_uses_valid_chars() {
+        let s = random_b62(1000);
+        for c in s.chars() {
+            assert!(c.is_ascii_alphanumeric(), "invalid char '{c}'");
+        }
+    }
+
+    #[test]
+    fn random_b62_produces_different_values() {
+        let a = random_b62(10);
+        let b = random_b62(10);
+        assert_ne!(a, b);
+    }
+}
+
 #[derive(FromRow, Serialize)]
 pub struct TopicData {
     pub name: String,
