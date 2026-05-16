@@ -1,5 +1,6 @@
 mod errors;
 mod routes;
+pub(crate) mod service;
 
 use axum::routing::{get, post};
 use axum::Router;

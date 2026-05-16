@@ -1,18 +1,16 @@
 use crate::errors::PostError;
+use crate::service;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use chrono::{DateTime, Utc};
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
-use easy_db::db_call;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
-use sqlx::FromRow;
 
 #[derive(Deserialize)]
-struct TopicBody {
+pub struct TopicBody {
     name: String,
     description: String,
 }
@@ -22,10 +20,7 @@ pub async fn create_topic(
     _user_id: UserId,
     Json(body): Json<TopicBody>,
 ) -> impl IntoResponse {
-    let name = &body.name;
-    let desc = &body.description;
-
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if !body.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({
@@ -36,13 +31,7 @@ pub async fn create_topic(
             .into_response();
     }
 
-    let result: Result<(), PostError> = db_call!(
-        pool = &app.pool,
-        query = ONE COLUMN "SELECT create_topic($1, $2)",
-        binds = [name, desc]
-    );
-
-    match result {
+    match service::create_topic(&app.pool, &body.name, &body.description).await {
         Ok(_) => (StatusCode::OK, Json(json!({}))).into_response(),
         Err(PostError::UniqueViolation) => (
             StatusCode::CONFLICT,
@@ -56,37 +45,18 @@ pub async fn create_topic(
     }
 }
 
-#[allow(dead_code)]
-#[derive(FromRow, Serialize)]
-struct TopicData {
-    name: String,
-    description: String,
-    created_at: DateTime<Utc>,
-    deleted: bool,
-}
-
 pub async fn get_all_topics(
     State(app): State<AppData>,
-) -> Result<Json<Vec<TopicData>>, PostError> {
-    let all_topics: Vec<TopicData> = db_call!(
-        pool = &app.pool,
-        query = ALL ROW "SELECT * FROM get_all_topics()"
-    )?;
-
-    Ok(Json(all_topics))
+) -> Result<Json<Vec<service::TopicData>>, PostError> {
+    let topics = service::get_all_topics(&app.pool).await?;
+    Ok(Json(topics))
 }
 
 pub async fn get_topic(
     State(app): State<AppData>,
     Path(topic_name): Path<String>,
 ) -> impl IntoResponse {
-    let result: Result<TopicData, PostError> = db_call!(
-        pool = &app.pool,
-        query = ONE ROW "SELECT * FROM get_topic($1)",
-        binds = [&topic_name]
-    );
-
-    match result {
+    match service::get_topic(&app.pool, &topic_name).await {
         Ok(topic) => (StatusCode::OK, Json(json!(topic))).into_response(),
         Err(PostError::TopicNotFound) => (
             StatusCode::NOT_FOUND,
