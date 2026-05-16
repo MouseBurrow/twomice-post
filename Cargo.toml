@@ -7,9 +7,9 @@ edition = "2021"
 anyhow = "1.0.100"
 axum = "0.7"
 chrono = { version = "0.4.42", features = ["serde"] }
-config = { git = "https://github.com/twomice/twomice-libs.git", subdir = "config" }
-custom_headers = { git = "https://github.com/twomice/twomice-libs.git", subdir = "custom_headers" }
-easy_errors = { git = "https://github.com/twomice/twomice-libs.git", subdir = "easy_errors" }
+config = { git = "https://github.com/MouseBurrow/twomice-libs.git", subdir = "config" }
+custom_headers = { git = "https://github.com/MouseBurrow/twomice-libs.git", subdir = "custom_headers" }
+easy_errors = { git = "https://github.com/MouseBurrow/twomice-libs.git", subdir = "easy_errors" }
 http = "1"
 rand = "0.8"
 serde = { version = "1.0.228", features = ["derive"] }
