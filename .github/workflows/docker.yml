@@ -42,7 +42,9 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GITHUB_TOKEN
           script: |
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /home/admin/twomice/deploy
             docker compose -f docker-compose.${{ steps.tags.outputs.env }}.yaml pull post
             docker compose -f docker-compose.${{ steps.tags.outputs.env }}.yaml up -d post
