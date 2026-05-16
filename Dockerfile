@@ -4,9 +4,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y gcc-aarch64-linux-gnu && rm -rf /var/lib/apt/lists/*
 RUN rustup target add aarch64-unknown-linux-gnu
 
-RUN mkdir -p .cargo && printf '[target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
-' > .cargo/config.toml
+RUN mkdir -p .cargo && printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' > .cargo/config.toml
 
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
