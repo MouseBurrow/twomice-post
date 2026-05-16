@@ -1,0 +1,44 @@
+name: Docker
+on:
+  push:
+    branches: [main, prod]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: mouseburrow/twomice-post
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      - name: Set tags
+        id: tags
+        run: |
+          if [ "${{ github.ref_name }}" = "prod" ]; then
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:prod-latest" >> $GITHUB_OUTPUT
+            echo "env=prod" >> $GITHUB_OUTPUT
+          else
+            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:test-latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "env=test" >> $GITHUB_OUTPUT
+          fi
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/twomice/deploy
+            docker compose -f docker-compose.${{ steps.tags.outputs.env }}.yaml pull post
+            docker compose -f docker-compose.${{ steps.tags.outputs.env }}.yaml up -d post
