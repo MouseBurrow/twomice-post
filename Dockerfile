@@ -5,7 +5,7 @@ WORKDIR /app
 # Copy manifests and shared crates
 COPY Cargo.toml Cargo.lock ./
 COPY services/post/ services/post/
-COPY shared/ shared/
+COPY libs/ libs/
 
 # Build using cached target, copy binary to real FS
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
