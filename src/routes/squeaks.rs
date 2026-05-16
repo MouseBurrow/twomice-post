@@ -1,5 +1,7 @@
 use crate::errors::PostError;
-use actix_web::{get, post, web, HttpResponse};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::Json;
 use chrono::{DateTime, Utc};
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
@@ -12,23 +14,19 @@ struct CommentBody {
     content: String,
 }
 
-#[post("/mcf/{topic}/nib/{post}/sqk")]
 pub async fn create_comment(
-    app: web::Data<AppData>,
-    path: web::Path<(String, String)>,
+    State(app): State<AppData>,
+    Path((topic_name, post_slug)): Path<(String, String)>,
     user_id: UserId,
-    body: web::Json<CommentBody>,
-) -> Result<HttpResponse, PostError> {
-    let (topic_name, post_slug) = path.into_inner();
-    let content = &body.content;
-
+    Json(body): Json<CommentBody>,
+) -> Result<(StatusCode, Json<serde_json::Value>), PostError> {
     let _: () = db_call!(
         pool = &app.pool,
         query = ONE COLUMN "SELECT create_comment($1, $2, $3, $4)",
-        binds = [user_id, topic_name, post_slug, content]
+        binds = [user_id, &topic_name, &post_slug, &body.content]
     )?;
 
-    Ok(HttpResponse::Ok().finish())
+    Ok((StatusCode::OK, Json(serde_json::json!({}))))
 }
 
 #[derive(FromRow, Serialize)]
@@ -39,18 +37,15 @@ struct CommentData {
     deleted: bool,
 }
 
-#[get("/mcf/{topic}/nib/{post}/sqk")]
 pub async fn get_all_comments(
-    app: web::Data<AppData>,
-    path: web::Path<(String, String)>,
-) -> Result<HttpResponse, PostError> {
-    let (topic_name, post_slug) = path.into_inner();
-
+    State(app): State<AppData>,
+    Path((topic_name, post_slug)): Path<(String, String)>,
+) -> Result<Json<Vec<CommentData>>, PostError> {
     let comments: Vec<CommentData> = db_call!(
         pool = &app.pool,
         query = ALL ROW "SELECT * FROM get_all_comments($1, $2)",
         binds = [topic_name, post_slug]
     )?;
 
-    Ok(HttpResponse::Ok().json(comments))
+    Ok(Json(comments))
 }

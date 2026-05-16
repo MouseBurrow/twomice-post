@@ -1,14 +1,15 @@
-use crate::routes::echoes::{create_reply, get_replies};
-use crate::routes::mischief::{create_topic, get_all_topics, get_topic};
-use crate::routes::nibbles::{create_post, get_all_posts, get_post};
-use crate::routes::squeaks::{create_comment, get_all_comments};
-use actix_web::{web, App, HttpServer};
+mod errors;
+mod routes;
+
+use axum::routing::{get, post};
+use axum::Router;
 use config::app_data::AppData;
 use config::config::Config;
 use config::logger;
-
-pub(crate) mod errors;
-mod routes;
+use routes::echoes::{create_reply, get_replies};
+use routes::mischief::{create_topic, get_all_topics, get_topic};
+use routes::nibbles::{create_post, get_all_posts, get_post};
+use routes::squeaks::{create_comment, get_all_comments};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -18,23 +19,20 @@ async fn main() -> anyhow::Result<()> {
     let app_data = AppData::new(config.clone()).await?;
     let addr = format!("0.0.0.0:{}", config.port);
 
-    HttpServer::new(move || {
-        App::new()
-            .app_data(web::Data::new(app_data.clone()))
-            .service(create_topic)
-            .service(get_all_topics)
-            .service(get_topic)
-            .service(create_post)
-            .service(get_post)
-            .service(get_all_posts)
-            .service(create_comment)
-            .service(get_all_comments)
-            .service(create_reply)
-            .service(get_replies)
-    })
-    .bind(&addr)?
-    .run()
-    .await?;
+    let app = Router::new()
+        .route("/mcf", post(create_topic).get(get_all_topics))
+        .route("/mcf/:topic", get(get_topic))
+        .route("/mcf/:topic/nib", post(create_post).get(get_all_posts))
+        .route("/mcf/:topic/nib/:post_id", get(get_post))
+        .route("/mcf/:topic/nib/:post/sqk", post(create_comment).get(get_all_comments))
+        .route(
+            "/mcf/:topic/nib/:post/sqk/:comment/echoes",
+            post(create_reply).get(get_replies),
+        )
+        .with_state(app_data);
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }

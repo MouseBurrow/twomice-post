@@ -1,5 +1,8 @@
 use crate::errors::PostError;
-use actix_web::{get, post, web, HttpResponse};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::Json;
 use chrono::{DateTime, Utc};
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
@@ -14,35 +17,42 @@ struct TopicBody {
     description: String,
 }
 
-#[post("/mcf")]
 pub async fn create_topic(
-    app: web::Data<AppData>,
-    body: web::Json<TopicBody>,
+    State(app): State<AppData>,
     _user_id: UserId,
-) -> HttpResponse {
+    Json(body): Json<TopicBody>,
+) -> impl IntoResponse {
     let name = &body.name;
     let desc = &body.description;
 
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return HttpResponse::BadRequest().json(json!({
-            "error": "invalid_name",
-            "message": "Topic name may contain only letters, digits, and underscores"
-        }));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "invalid_name",
+                "message": "Topic name may contain only letters, digits, and underscores"
+            })),
+        )
+            .into_response();
     }
 
     let result: Result<(), PostError> = db_call!(
         pool = &app.pool,
         query = ONE COLUMN "SELECT create_topic($1, $2)",
-        binds = [&name, &desc]
+        binds = [name, desc]
     );
 
     match result {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(PostError::UniqueViolation) => HttpResponse::Conflict().json(json!({
-            "error": "topic_already_exists",
-            "message": "Topic already exists"
-        })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
+        Ok(_) => (StatusCode::OK, Json(json!({}))).into_response(),
+        Err(PostError::UniqueViolation) => (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "topic_already_exists",
+                "message": "Topic already exists"
+            })),
+        )
+            .into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({}))).into_response(),
     }
 }
 
@@ -55,20 +65,21 @@ struct TopicData {
     deleted: bool,
 }
 
-#[get("/mcf")]
-pub async fn get_all_topics(app: web::Data<AppData>) -> Result<HttpResponse, PostError> {
+pub async fn get_all_topics(
+    State(app): State<AppData>,
+) -> Result<Json<Vec<TopicData>>, PostError> {
     let all_topics: Vec<TopicData> = db_call!(
         pool = &app.pool,
         query = ALL ROW "SELECT * FROM get_all_topics()"
     )?;
 
-    Ok(HttpResponse::Ok().json(all_topics))
+    Ok(Json(all_topics))
 }
 
-#[get("/mcf/{topic}")]
-pub async fn get_topic(app: web::Data<AppData>, path: web::Path<String>) -> HttpResponse {
-    let topic_name = path.into_inner();
-
+pub async fn get_topic(
+    State(app): State<AppData>,
+    Path(topic_name): Path<String>,
+) -> impl IntoResponse {
     let result: Result<TopicData, PostError> = db_call!(
         pool = &app.pool,
         query = ONE ROW "SELECT * FROM get_topic($1)",
@@ -76,11 +87,15 @@ pub async fn get_topic(app: web::Data<AppData>, path: web::Path<String>) -> Http
     );
 
     match result {
-        Ok(topic) => HttpResponse::Ok().json(topic),
-        Err(PostError::TopicNotFound) => HttpResponse::NotFound().json(json!({
-            "error": "not_found",
-            "message": "Topic not found"
-        })),
-        Err(_) => HttpResponse::InternalServerError().finish(),
+        Ok(topic) => (StatusCode::OK, Json(json!(topic))).into_response(),
+        Err(PostError::TopicNotFound) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": "not_found",
+                "message": "Topic not found"
+            })),
+        )
+            .into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({}))).into_response(),
     }
 }
