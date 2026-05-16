@@ -23,8 +23,7 @@ pub async fn create_topic(
     let name = &body.name;
     let desc = &body.description;
 
-    let valid_name = regex::Regex::new(r"^[A-Za-z0-9_]+$").unwrap();
-    if !valid_name.is_match(name) {
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return HttpResponse::BadRequest().json(json!({
             "error": "invalid_name",
             "message": "Topic name may contain only letters, digits, and underscores"
