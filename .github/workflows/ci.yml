@@ -10,10 +10,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Configure private repo access
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        if: env.GH_PAT != ''
-        run: git config --global url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
       - run: cargo build
       - run: cargo test
