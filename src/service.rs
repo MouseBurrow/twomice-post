@@ -69,17 +69,13 @@ pub async fn create_topic(
     Ok(())
 }
 
-pub async fn get_topic(
-    pool: &Pool<Postgres>,
-    name: &str,
-) -> Result<TopicData, PostError> {
-    let topic: Option<TopicData> = sqlx::query_as(
-        "SELECT name, description, created_at, deleted FROM topics WHERE name = $1",
-    )
-    .bind(name)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
+pub async fn get_topic(pool: &Pool<Postgres>, name: &str) -> Result<TopicData, PostError> {
+    let topic: Option<TopicData> =
+        sqlx::query_as("SELECT name, description, created_at, deleted FROM topics WHERE name = $1")
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?;
 
     topic.ok_or(PostError::TopicNotFound)
 }

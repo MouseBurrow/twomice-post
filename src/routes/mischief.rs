@@ -20,7 +20,11 @@ pub async fn create_topic(
     _user_id: UserId,
     Json(body): Json<TopicBody>,
 ) -> impl IntoResponse {
-    if !body.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if !body
+        .name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({
