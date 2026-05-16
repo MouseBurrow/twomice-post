@@ -40,6 +40,6 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/twomice/deploy
+            cd /home/admin/twomice/deploy
             docker compose -f docker-compose.${{ steps.tags.outputs.env }}.yaml pull post
             docker compose -f docker-compose.${{ steps.tags.outputs.env }}.yaml up -d post
