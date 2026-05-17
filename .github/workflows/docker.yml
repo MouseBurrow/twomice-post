@@ -14,9 +14,27 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m
           script: |
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /home/admin/twomice
+            mkdir -p deploy services
+            if [ ! -f deploy/.env ]; then
+              cat > deploy/.env << 'ENVEOF'
+ENV=test-latest
+APP_ENV=test
+AUTH_DB_PASSWORD=${{ secrets.AUTH_DB_PASSWORD }}
+POST_DB_PASSWORD=${{ secrets.POST_DB_PASSWORD }}
+MODERATION_DB_PASSWORD=${{ secrets.MODERATION_DB_PASSWORD }}
+SOCIAL_DB_PASSWORD=${{ secrets.SOCIAL_DB_PASSWORD }}
+FEED_DB_PASSWORD=${{ secrets.FEED_DB_PASSWORD }}
+AUTH_DATABASE_URL=postgresql://twomice:${{ secrets.AUTH_DB_PASSWORD }}@auth-db:5432/auth
+POST_DATABASE_URL=postgresql://twomice:${{ secrets.POST_DB_PASSWORD }}@post-db:5432/post
+MODERATION_DATABASE_URL=postgresql://twomice:${{ secrets.MODERATION_DB_PASSWORD }}@moderation-db:5432/moderation
+SOCIAL_DATABASE_URL=postgresql://twomice:${{ secrets.SOCIAL_DB_PASSWORD }}@social-db:5432/social
+FEED_DATABASE_URL=postgresql://twomice:${{ secrets.FEED_DB_PASSWORD }}@social-feed-db:5432/social_feed
+ENVEOF
+            fi
             if [ -d "services/post" ]; then
               cd services/post && git pull origin main
             else
@@ -24,11 +42,8 @@ jobs:
               git clone https://github.com/MouseBurrow/twomice-post.git post
               cd post
             fi
-            if [ "${{ github.ref_name }}" = "prod" ]; then
-              docker build -t ghcr.io/mouseburrow/twomice-post:prod-latest .
-            else
-              docker build -t ghcr.io/mouseburrow/twomice-post:test-latest .
-            fi
-            docker push ghcr.io/mouseburrow/twomice-post:${{ github.ref_name == 'prod' && 'prod-latest' || 'test-latest' }}
+            TAG="${{ github.ref_name == 'prod' && 'prod-latest' || 'test-latest' }}"
+            docker build -t ghcr.io/mouseburrow/twomice-post:$TAG .
+            docker push ghcr.io/mouseburrow/twomice-post:$TAG
             cd /home/admin/twomice/deploy
             docker compose -f docker-compose.${{ github.ref_name == 'prod' && 'prod' || 'test' }}.yaml up -d post
