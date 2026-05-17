@@ -20,20 +20,18 @@ jobs:
             cd /home/admin/twomice
             mkdir -p deploy services
             if [ ! -f deploy/.env ]; then
-              cat > deploy/.env << 'ENVEOF'
-ENV=test-latest
-APP_ENV=test
-AUTH_DB_PASSWORD=${{ secrets.AUTH_DB_PASSWORD }}
-POST_DB_PASSWORD=${{ secrets.POST_DB_PASSWORD }}
-MODERATION_DB_PASSWORD=${{ secrets.MODERATION_DB_PASSWORD }}
-SOCIAL_DB_PASSWORD=${{ secrets.SOCIAL_DB_PASSWORD }}
-FEED_DB_PASSWORD=${{ secrets.FEED_DB_PASSWORD }}
-AUTH_DATABASE_URL=postgresql://twomice:${{ secrets.AUTH_DB_PASSWORD }}@auth-db:5432/auth
-POST_DATABASE_URL=postgresql://twomice:${{ secrets.POST_DB_PASSWORD }}@post-db:5432/post
-MODERATION_DATABASE_URL=postgresql://twomice:${{ secrets.MODERATION_DB_PASSWORD }}@moderation-db:5432/moderation
-SOCIAL_DATABASE_URL=postgresql://twomice:${{ secrets.SOCIAL_DB_PASSWORD }}@social-db:5432/social
-FEED_DATABASE_URL=postgresql://twomice:${{ secrets.FEED_DB_PASSWORD }}@social-feed-db:5432/social_feed
-ENVEOF
+              echo "ENV=test-latest" > deploy/.env
+              echo "APP_ENV=test" >> deploy/.env
+              echo "AUTH_DB_PASSWORD=${{ secrets.AUTH_DB_PASSWORD }}" >> deploy/.env
+              echo "POST_DB_PASSWORD=${{ secrets.POST_DB_PASSWORD }}" >> deploy/.env
+              echo "MODERATION_DB_PASSWORD=${{ secrets.MODERATION_DB_PASSWORD }}" >> deploy/.env
+              echo "SOCIAL_DB_PASSWORD=${{ secrets.SOCIAL_DB_PASSWORD }}" >> deploy/.env
+              echo "FEED_DB_PASSWORD=${{ secrets.FEED_DB_PASSWORD }}" >> deploy/.env
+              echo "AUTH_DATABASE_URL=postgresql://twomice:${{ secrets.AUTH_DB_PASSWORD }}@auth-db:5432/auth" >> deploy/.env
+              echo "POST_DATABASE_URL=postgresql://twomice:${{ secrets.POST_DB_PASSWORD }}@post-db:5432/post" >> deploy/.env
+              echo "MODERATION_DATABASE_URL=postgresql://twomice:${{ secrets.MODERATION_DB_PASSWORD }}@moderation-db:5432/moderation" >> deploy/.env
+              echo "SOCIAL_DATABASE_URL=postgresql://twomice:${{ secrets.SOCIAL_DB_PASSWORD }}@social-db:5432/social" >> deploy/.env
+              echo "FEED_DATABASE_URL=postgresql://twomice:${{ secrets.FEED_DB_PASSWORD }}@social-feed-db:5432/social_feed" >> deploy/.env
             fi
             if [ -d "services/post" ]; then
               cd services/post && git pull origin main
