@@ -16,7 +16,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m
           script: |
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /home/admin/twomice
             mkdir -p deploy services
             if [ ! -f deploy/.env ]; then
@@ -33,6 +32,11 @@ jobs:
               echo "SOCIAL_DATABASE_URL=postgresql://twomice:${{ secrets.SOCIAL_DB_PASSWORD }}@social-db:5432/social" >> deploy/.env
               echo "FEED_DATABASE_URL=postgresql://twomice:${{ secrets.FEED_DB_PASSWORD }}@social-feed-db:5432/social_feed" >> deploy/.env
             fi
+            if ! command -v cargo &> /dev/null; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+              . "$HOME/.cargo/env"
+            fi
+            . "$HOME/.cargo/env"
             if [ -d "services/post" ]; then
               cd services/post && git pull origin main
             else
@@ -41,7 +45,13 @@ jobs:
               cd post
             fi
             TAG="${{ github.ref_name == 'prod' && 'prod-latest' || 'test-latest' }}"
+            cargo build --release
+            mkdir -p /tmp/docker-build
+            cp target/release/post /tmp/docker-build/service
+            cp Dockerfile /tmp/docker-build/
+            cd /tmp/docker-build
             docker build -t ghcr.io/mouseburrow/twomice-post:$TAG .
             docker push ghcr.io/mouseburrow/twomice-post:$TAG
+            rm -rf /tmp/docker-build
             cd /home/admin/twomice/deploy
             docker compose -f docker-compose.${{ github.ref_name == 'prod' && 'prod' || 'test' }}.yaml up -d post
