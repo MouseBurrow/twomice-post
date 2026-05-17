@@ -3,40 +3,10 @@ on:
   push:
     branches: [main, prod]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: mouseburrow/twomice-post
-
 jobs:
   build:
-    permissions:
-      contents: read
-      packages: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set tags
-        id: tags
-        run: |
-          if [ "${{ github.ref_name }}" = "prod" ]; then
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:prod-latest" >> $GITHUB_OUTPUT
-            echo "env=prod" >> $GITHUB_OUTPUT
-          else
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:test-latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "env=test" >> $GITHUB_OUTPUT
-          fi
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/arm64
-          tags: ${{ steps.tags.outputs.tags }}
       - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
@@ -46,6 +16,19 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /home/admin/twomice
+            if [ -d "services/post" ]; then
+              cd services/post && git pull origin main
+            else
+              mkdir -p services && cd services
+              git clone https://github.com/MouseBurrow/twomice-post.git post
+              cd post
+            fi
+            if [ "${{ github.ref_name }}" = "prod" ]; then
+              docker build -t ghcr.io/mouseburrow/twomice-post:prod-latest .
+            else
+              docker build -t ghcr.io/mouseburrow/twomice-post:test-latest .
+            fi
+            docker push ghcr.io/mouseburrow/twomice-post:${{ github.ref_name == 'prod' && 'prod-latest' || 'test-latest' }}
             cd /home/admin/twomice/deploy
-            docker compose -f docker-compose.test.yaml pull post
-            docker compose -f docker-compose.test.yaml up -d post
+            docker compose -f docker-compose.${{ github.ref_name == 'prod' && 'prod' || 'test' }}.yaml up -d post
