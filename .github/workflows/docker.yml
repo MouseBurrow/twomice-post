@@ -1,7 +1,8 @@
 name: Docker
 on:
   push:
-    branches: [test, prod]
+    branches: [test]
+    tags: ['*']
 
 jobs:
   build:
@@ -17,7 +18,11 @@ jobs:
           command_timeout: 30m
           script: |
             BRANCH="${{ github.ref_name }}"
-            ENV_NAME="$( [ "$BRANCH" = "prod" ] && echo "prod" || echo "test" )"
+            if [[ "${{ github.ref_type }}" == "tag" ]]; then
+              ENV_NAME="prod"
+            else
+              ENV_NAME="test"
+            fi
             TAG="${ENV_NAME}-latest"
 
             cd /home/admin/twomice
@@ -51,6 +56,13 @@ jobs:
               git clone --branch "$BRANCH" https://github.com/MouseBurrow/twomice-post.git post
               cd post
             fi
+
+            if [[ "$ENV_NAME" == "prod" ]]; then
+              sed -i 's/branch = "main"/tag = "stable"/' Cargo.toml
+            elif [[ "$ENV_NAME" == "test" ]]; then
+              sed -i 's/branch = "main"/branch = "test"/' Cargo.toml
+            fi
+
             cargo build --release
             mkdir -p /tmp/docker-build
             cp target/release/post /tmp/docker-build/service
