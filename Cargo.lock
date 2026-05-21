@@ -285,7 +285,7 @@ dependencies = [
 [[package]]
 name = "config"
 version = "0.1.0"
-source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=prod#78605748e9f3c77788e27d60da04a0223c8e51b9"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=main#78605748e9f3c77788e27d60da04a0223c8e51b9"
 dependencies = [
  "anyhow",
  "axum",
@@ -380,7 +380,7 @@ dependencies = [
 [[package]]
 name = "custom_headers"
 version = "0.1.0"
-source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=prod#78605748e9f3c77788e27d60da04a0223c8e51b9"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=main#78605748e9f3c77788e27d60da04a0223c8e51b9"
 dependencies = [
  "axum",
  "http",
@@ -431,7 +431,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 [[package]]
 name = "easy_errors"
 version = "0.1.0"
-source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=prod#78605748e9f3c77788e27d60da04a0223c8e51b9"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=main#78605748e9f3c77788e27d60da04a0223c8e51b9"
 dependencies = [
  "axum",
  "http",
@@ -2007,7 +2007,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 [[package]]
 name = "utils"
 version = "0.1.0"
-source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=prod#78605748e9f3c77788e27d60da04a0223c8e51b9"
+source = "git+https://github.com/MouseBurrow/twomice-libs.git?branch=main#78605748e9f3c77788e27d60da04a0223c8e51b9"
 dependencies = [
  "rand 0.8.6",
  "serde",
