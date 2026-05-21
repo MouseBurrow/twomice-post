@@ -65,6 +65,7 @@ jobs:
               sed -i 's/branch = "main"/branch = "test"/' Cargo.toml
             fi
 
+            rm -f Cargo.lock
             cargo build --release
             mkdir -p /tmp/docker-build
             cp target/release/post /tmp/docker-build/service
@@ -75,4 +76,4 @@ jobs:
             rm -rf /tmp/docker-build
             cd /home/admin/twomice/deploy
             docker compose -f docker-compose.${ENV_NAME}.yaml pull post
-            docker compose -f docker-compose.${ENV_NAME}.yaml up -d post
+            docker compose -f docker-compose.${ENV_NAME}.yaml up -d --force-recreate post
