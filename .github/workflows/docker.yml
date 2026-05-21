@@ -27,7 +27,6 @@ jobs:
 
             cd /home/admin/twomice
             mkdir -p deploy services
-            if [ ! -f deploy/.env ]; then
               echo "ENV=${TAG}" > deploy/.env
               echo "APP_ENV=${ENV_NAME}" >> deploy/.env
               echo "AUTH_DB_PASSWORD=${{ secrets.AUTH_DB_PASSWORD }}" >> deploy/.env
@@ -40,7 +39,7 @@ jobs:
               echo "MODERATION_DATABASE_URL=postgresql://twomice:${{ secrets.MODERATION_DB_PASSWORD }}@moderation-db:5432/moderation" >> deploy/.env
               echo "SOCIAL_DATABASE_URL=postgresql://twomice:${{ secrets.SOCIAL_DB_PASSWORD }}@social-db:5432/social" >> deploy/.env
               echo "FEED_DATABASE_URL=postgresql://twomice:${{ secrets.FEED_DB_PASSWORD }}@social-feed-db:5432/social_feed" >> deploy/.env
-            fi
+
             if ! command -v cargo &> /dev/null; then
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
               . "$HOME/.cargo/env"
