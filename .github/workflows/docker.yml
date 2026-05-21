@@ -2,7 +2,7 @@ name: Docker
 on:
   push:
     branches: [test]
-    tags: ['*']
+    tags: ['v*']
 
 jobs:
   build:
