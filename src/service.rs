@@ -1,50 +1,10 @@
 use crate::errors::PostError;
 use chrono::{DateTime, Utc};
-use easy_errors::map_sqlx_error;
+use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
-
-const B62_CHARS: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-fn random_b62(len: usize) -> String {
-    use rand::Rng;
-    (0..len)
-        .map(|_| {
-            let idx = rand::thread_rng().gen_range(0..B62_CHARS.len());
-            B62_CHARS[idx] as char
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn random_b62_has_correct_length() {
-        for len in [1, 5, 10, 32] {
-            let s = random_b62(len);
-            assert_eq!(s.len(), len, "length {len}");
-        }
-    }
-
-    #[test]
-    fn random_b62_uses_valid_chars() {
-        let s = random_b62(1000);
-        for c in s.chars() {
-            assert!(c.is_ascii_alphanumeric(), "invalid char '{c}'");
-        }
-    }
-
-    #[test]
-    fn random_b62_produces_different_values() {
-        let a = random_b62(10);
-        let b = random_b62(10);
-        assert_ne!(a, b);
-    }
-}
 
 #[derive(FromRow, Serialize)]
 pub struct TopicData {
@@ -117,30 +77,30 @@ pub async fn create_post(
         .map_err(map_sqlx_error::<PostError>)?
         .ok_or(PostError::TopicNotFound)?;
 
-    loop {
-        let final_slug = format!("{}-{}", slug, random_b62(5));
+    let mut final_slug = String::new();
 
-        let result = sqlx::query(
-            "INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
-             VALUES ($1, $2, $3, $4, $5, $6)",
-        )
-        .bind(creator_id)
-        .bind(topic_id)
-        .bind(title)
-        .bind(&final_slug)
-        .bind(content)
-        .bind(image_url)
-        .execute(pool)
-        .await;
-
-        match result {
-            Ok(_) => return Ok(final_slug),
-            Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
-                continue;
-            }
-            Err(e) => return Err(map_sqlx_error(e)),
+    insert_retry_on_duplicate::<PostError, _, _>(|| {
+        let fs = format!("{}-{}", slug, utils::random_b62(5));
+        final_slug = fs.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(creator_id)
+            .bind(topic_id)
+            .bind(title)
+            .bind(&fs)
+            .bind(content)
+            .bind(image_url)
+            .execute(pool)
+            .await?;
+            Ok(())
         }
-    }
+    })
+    .await?;
+
+    Ok(final_slug)
 }
 
 pub async fn get_post(
@@ -183,12 +143,14 @@ pub async fn get_all_post(
 }
 
 #[derive(FromRow, Serialize)]
-pub struct CommentData {
+pub struct NoteData {
     pub hash: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub deleted: bool,
 }
+pub type CommentData = NoteData;
+pub type ReplyData = NoteData;
 
 pub async fn create_comment(
     pool: &Pool<Postgres>,
@@ -208,10 +170,9 @@ pub async fn create_comment(
     .map_err(map_sqlx_error::<PostError>)?
     .ok_or(PostError::PostNotFound)?;
 
-    loop {
-        let hash = random_b62(5);
-
-        let result = sqlx::query(
+    insert_retry_on_duplicate::<PostError, _, _>(|| async {
+        let hash = utils::random_b62(5);
+        sqlx::query(
             "INSERT INTO comments (hash, sender_id, post_id, content)
              VALUES ($1, $2, $3, $4)",
         )
@@ -220,16 +181,10 @@ pub async fn create_comment(
         .bind(post_id)
         .bind(content)
         .execute(pool)
-        .await;
-
-        match result {
-            Ok(_) => return Ok(()),
-            Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
-                continue;
-            }
-            Err(e) => return Err(map_sqlx_error(e)),
-        }
-    }
+        .await?;
+        Ok(())
+    })
+    .await
 }
 
 pub async fn get_all_comments(
@@ -252,14 +207,6 @@ pub async fn get_all_comments(
     .map_err(map_sqlx_error::<PostError>)?;
 
     Ok(comments)
-}
-
-#[derive(FromRow, Serialize)]
-pub struct ReplyData {
-    pub hash: String,
-    pub content: String,
-    pub created_at: DateTime<Utc>,
-    pub deleted: bool,
 }
 
 pub async fn create_reply(
@@ -288,10 +235,9 @@ pub async fn create_reply(
     .map_err(map_sqlx_error::<PostError>)?
     .ok_or(PostError::PostNotFound)?;
 
-    loop {
-        let hash = random_b62(5);
-
-        let result = sqlx::query(
+    insert_retry_on_duplicate::<PostError, _, _>(|| async {
+        let hash = utils::random_b62(5);
+        sqlx::query(
             "INSERT INTO replies (hash, sender_id, post_id, comment_id, content)
              VALUES ($1, $2, $3, $4, $5)",
         )
@@ -301,16 +247,10 @@ pub async fn create_reply(
         .bind(comment_id)
         .bind(content)
         .execute(pool)
-        .await;
-
-        match result {
-            Ok(_) => return Ok(()),
-            Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
-                continue;
-            }
-            Err(e) => return Err(map_sqlx_error(e)),
-        }
-    }
+        .await?;
+        Ok(())
+    })
+    .await
 }
 
 pub async fn get_replies(

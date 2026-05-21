@@ -26,6 +26,11 @@ define_errors!(
             code: "P0003",
             status: NOT_FOUND,
             message: "Reply not found"
+        },
+        InvalidTopicName => {
+            code: "P0004",
+            status: BAD_REQUEST,
+            message: "Topic name may contain only letters, digits, and underscores"
         }
     }
 );

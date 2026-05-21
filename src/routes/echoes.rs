@@ -1,23 +1,19 @@
 use crate::errors::PostError;
 use crate::service;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::Json;
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
-use serde::Deserialize;
+use easy_errors::json_empty;
 
-#[derive(Deserialize)]
-pub struct ReplyBody {
-    content: String,
-}
+use super::ContentBody;
 
 pub async fn create_reply(
     State(app): State<AppData>,
     Path((topic_name, post_slug, comment_hash)): Path<(String, String, String)>,
     user_id: UserId,
-    Json(body): Json<ReplyBody>,
-) -> Result<(StatusCode, Json<serde_json::Value>), PostError> {
+    Json(body): Json<ContentBody>,
+) -> Result<Json<serde_json::Value>, PostError> {
     service::create_reply(
         &app.pool,
         user_id.into(),
@@ -28,7 +24,7 @@ pub async fn create_reply(
     )
     .await?;
 
-    Ok((StatusCode::OK, Json(serde_json::json!({}))))
+    Ok(json_empty())
 }
 
 pub async fn get_replies(

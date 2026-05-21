@@ -1,8 +1,6 @@
 use crate::errors::PostError;
 use crate::service;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::Json;
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
@@ -19,34 +17,18 @@ pub async fn create_topic(
     State(app): State<AppData>,
     _user_id: UserId,
     Json(body): Json<TopicBody>,
-) -> impl IntoResponse {
+) -> Result<Json<serde_json::Value>, PostError> {
     if !body
         .name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "invalid_name",
-                "message": "Topic name may contain only letters, digits, and underscores"
-            })),
-        )
-            .into_response();
+        return Err(PostError::InvalidTopicName);
     }
 
-    match service::create_topic(&app.pool, &body.name, &body.description).await {
-        Ok(_) => (StatusCode::OK, Json(json!({}))).into_response(),
-        Err(PostError::UniqueViolation) => (
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "topic_already_exists",
-                "message": "Topic already exists"
-            })),
-        )
-            .into_response(),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({}))).into_response(),
-    }
+    service::create_topic(&app.pool, &body.name, &body.description).await?;
+
+    Ok(Json(json!({})))
 }
 
 pub async fn get_all_topics(
@@ -59,17 +41,7 @@ pub async fn get_all_topics(
 pub async fn get_topic(
     State(app): State<AppData>,
     Path(topic_name): Path<String>,
-) -> impl IntoResponse {
-    match service::get_topic(&app.pool, &topic_name).await {
-        Ok(topic) => (StatusCode::OK, Json(json!(topic))).into_response(),
-        Err(PostError::TopicNotFound) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": "not_found",
-                "message": "Topic not found"
-            })),
-        )
-            .into_response(),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({}))).into_response(),
-    }
+) -> Result<Json<service::TopicData>, PostError> {
+    let topic = service::get_topic(&app.pool, &topic_name).await?;
+    Ok(Json(topic))
 }

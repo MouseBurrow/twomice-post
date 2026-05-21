@@ -1,0 +1,5 @@
+[patch.'https://github.com/MouseBurrow/twomice-libs.git']
+config = { path = "../../libs/config" }
+custom_headers = { path = "../../libs/custom_headers" }
+easy_errors = { path = "../../libs/easy_errors" }
+utils = { path = "../../libs/utils" }

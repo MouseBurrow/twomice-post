@@ -4,9 +4,7 @@ pub(crate) mod service;
 
 use axum::routing::{get, post};
 use axum::Router;
-use config::app_data::AppData;
-use config::config::Config;
-use config::logger;
+use config::server;
 use routes::echoes::{create_reply, get_replies};
 use routes::mischief::{create_topic, get_all_topics, get_topic};
 use routes::nibbles::{create_post, get_all_posts, get_post};
@@ -14,13 +12,7 @@ use routes::squeaks::{create_comment, get_all_comments};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    logger::init();
-
-    let config = Config::load("post");
-    let app_data = AppData::new(config.clone()).await?;
-    let addr = format!("0.0.0.0:{}", config.port);
-
-    let app = Router::new()
+    server::serve("post", Router::new()
         .route("/mcf", post(create_topic).get(get_all_topics))
         .route("/mcf/:topic", get(get_topic))
         .route("/mcf/:topic/nib", post(create_post).get(get_all_posts))
@@ -33,10 +25,5 @@ async fn main() -> anyhow::Result<()> {
             "/mcf/:topic/nib/:post/sqk/:comment/echoes",
             post(create_reply).get(get_replies),
         )
-        .with_state(app_data);
-
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
-
-    Ok(())
+    ).await
 }
