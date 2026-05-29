@@ -4,7 +4,6 @@ use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
-use uuid::Uuid;
 
 #[derive(FromRow, Serialize)]
 pub struct TopicData {
@@ -63,14 +62,14 @@ pub struct PostData {
 
 pub async fn create_post(
     pool: &Pool<Postgres>,
-    creator_id: Uuid,
+    creator_id: i64,
     topic_name: &str,
     title: &str,
     slug: &str,
     content: &str,
     image_url: &Option<String>,
 ) -> Result<String, PostError> {
-    let topic_id: Uuid = sqlx::query_scalar("SELECT id FROM topics WHERE name = $1")
+    let topic_id: i64 = sqlx::query_scalar("SELECT id FROM topics WHERE name = $1")
         .bind(topic_name)
         .fetch_optional(pool)
         .await
@@ -154,12 +153,12 @@ pub type ReplyData = NoteData;
 
 pub async fn create_comment(
     pool: &Pool<Postgres>,
-    sender_id: Uuid,
+    sender_id: i64,
     topic_name: &str,
     post_slug: &str,
     content: &str,
 ) -> Result<(), PostError> {
-    let post_id: Uuid = sqlx::query_scalar(
+    let post_id: i64 = sqlx::query_scalar(
         "SELECT p.id FROM posts p JOIN topics t ON t.id = p.topic_id
          WHERE t.name = $1 AND p.slug = $2",
     )
@@ -211,20 +210,20 @@ pub async fn get_all_comments(
 
 pub async fn create_reply(
     pool: &Pool<Postgres>,
-    sender_id: Uuid,
+    sender_id: i64,
     topic_name: &str,
     post_slug: &str,
     comment_hash: &str,
     content: &str,
 ) -> Result<(), PostError> {
-    let comment_id: Uuid = sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
+    let comment_id: i64 = sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
         .bind(comment_hash)
         .fetch_optional(pool)
         .await
         .map_err(map_sqlx_error::<PostError>)?
         .ok_or(PostError::CommentNotFound)?;
 
-    let post_id: Uuid = sqlx::query_scalar(
+    let post_id: i64 = sqlx::query_scalar(
         "SELECT p.id FROM posts p JOIN topics t ON t.id = p.topic_id
          WHERE t.name = $1 AND p.slug = $2",
     )
