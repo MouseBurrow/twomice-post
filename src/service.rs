@@ -51,6 +51,13 @@ pub async fn get_all_topics(pool: &Pool<Postgres>) -> Result<Vec<TopicData>, Pos
 }
 
 #[derive(FromRow, Serialize)]
+pub struct BoardSummary {
+    pub name: String,
+    pub description: String,
+    pub post_count: i64,
+}
+
+#[derive(FromRow, Serialize)]
 pub struct PostData {
     pub title: String,
     pub slug: String,
@@ -58,6 +65,26 @@ pub struct PostData {
     pub image_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub deleted: bool,
+    #[sqlx(default)]
+    pub vote_count: i64,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anon_token: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_mine: Option<bool>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[sqlx(default)]
+    pub reply_count: i64,
+    #[sqlx(default)]
+    pub view_count: i64,
+    #[sqlx(default)]
+    pub is_hot: bool,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub board_id: Option<String>,
 }
 
 pub async fn create_post(
@@ -106,11 +133,25 @@ pub async fn get_post(
     pool: &Pool<Postgres>,
     topic_name: &str,
     post_slug: &str,
+    maybe_user_id: Option<i64>,
 ) -> Result<PostData, PostError> {
     let post: Option<PostData> = sqlx::query_as(
-        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted
+        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                NULL::TEXT as anon_token,
+                NULL::BOOL as is_mine,
+                COALESCE(p.tags, '{{}}') as tags,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                p.view_count,
+                false as is_hot,
+                NULL::TEXT as board_id
          FROM posts p
          JOIN topics t ON t.id = p.topic_id
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(SUM(direction), 0) as vote_count
+             FROM post_votes
+             WHERE post_id = p.id
+         ) pv ON true
          WHERE t.name = $1 AND p.slug = $2",
     )
     .bind(topic_name)
@@ -119,17 +160,62 @@ pub async fn get_post(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    post.ok_or(PostError::PostNotFound)
+    let mut post = post.ok_or(PostError::PostNotFound)?;
+
+    let pid = resolve_post_id(pool, topic_name, post_slug).await?;
+    let _ = sqlx::query("UPDATE posts SET view_count = view_count + 1 WHERE id = $1")
+        .bind(pid)
+        .execute(pool)
+        .await;
+
+    post.is_hot = post.vote_count > 10 || post.view_count > 100;
+
+    if let Some(uid) = maybe_user_id {
+        let creator_id: Option<i64> = sqlx::query_scalar(
+            "SELECT p.creator_id FROM posts p
+             JOIN topics t ON t.id = p.topic_id
+             WHERE t.name = $1 AND p.slug = $2",
+        )
+        .bind(topic_name)
+        .bind(post_slug)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?
+        .flatten();
+
+        if let Some(cid) = creator_id {
+            post.is_mine = Some(cid == uid);
+            if cid == uid {
+                post.anon_token = Some(compute_anon_token(uid, topic_name, post_slug));
+            }
+        }
+    }
+
+    Ok(post)
 }
 
 pub async fn get_all_post(
     pool: &Pool<Postgres>,
     topic_name: &str,
+    maybe_user_id: Option<i64>,
 ) -> Result<Vec<PostData>, PostError> {
     let posts: Vec<PostData> = sqlx::query_as(
-        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted
+        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                NULL::TEXT as anon_token,
+                NULL::BOOL as is_mine,
+                COALESCE(p.tags, '{{}}') as tags,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                p.view_count,
+                false as is_hot,
+                NULL::TEXT as board_id
          FROM posts p
          JOIN topics t ON t.id = p.topic_id
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(SUM(direction), 0) as vote_count
+             FROM post_votes
+             WHERE post_id = p.id
+         ) pv ON true
          WHERE t.name = $1
          ORDER BY p.created_at",
     )
@@ -138,17 +224,53 @@ pub async fn get_all_post(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    Ok(posts)
+    let mut result = Vec::new();
+    for mut post in posts {
+        post.is_hot = post.vote_count > 10 || post.view_count > 100;
+
+        if let Some(uid) = maybe_user_id {
+            let creator_id: Option<i64> = sqlx::query_scalar(
+                "SELECT p.creator_id FROM posts p
+                 JOIN topics t ON t.id = p.topic_id
+                 WHERE t.name = $1 AND p.slug = $2",
+            )
+            .bind(topic_name)
+            .bind(&post.slug)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?
+            .flatten();
+
+            if let Some(cid) = creator_id {
+                post.is_mine = Some(cid == uid);
+                if cid == uid {
+                    post.anon_token = Some(compute_anon_token(uid, topic_name, &post.slug));
+                }
+            }
+        }
+
+        result.push(post);
+    }
+
+    Ok(result)
 }
 
 #[derive(FromRow, Serialize)]
-pub struct NoteData {
+pub struct CommentData {
     pub hash: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub deleted: bool,
+    #[sqlx(default)]
+    pub vote_count: i64,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anon_token: Option<String>,
+    #[sqlx(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_mine: Option<bool>,
 }
-pub type CommentData = NoteData;
+pub type NoteData = CommentData;
 pub type ReplyData = NoteData;
 
 pub async fn create_comment(
@@ -190,12 +312,21 @@ pub async fn get_all_comments(
     pool: &Pool<Postgres>,
     topic_name: &str,
     post_slug: &str,
+    maybe_user_id: Option<i64>,
 ) -> Result<Vec<CommentData>, PostError> {
     let comments: Vec<CommentData> = sqlx::query_as(
-        "SELECT c.hash, c.content, c.created_at, c.deleted
+        "SELECT c.hash, c.content, c.created_at, c.deleted,
+                COALESCE(cv.vote_count, 0)::BIGINT as vote_count,
+                NULL::TEXT as anon_token,
+                NULL::BOOL as is_mine
          FROM comments c
          JOIN posts p ON p.id = c.post_id
          JOIN topics t ON t.id = p.topic_id
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(SUM(direction), 0) as vote_count
+             FROM comment_votes
+             WHERE comment_id = c.id
+         ) cv ON true
          WHERE t.name = $1 AND p.slug = $2
          ORDER BY c.created_at",
     )
@@ -205,7 +336,27 @@ pub async fn get_all_comments(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    Ok(comments)
+    let mut result = Vec::new();
+    for mut comment in comments {
+        if let Some(uid) = maybe_user_id {
+            let sender_id: Option<i64> = sqlx::query_scalar(
+                "SELECT sender_id FROM comments WHERE hash = $1",
+            )
+            .bind(&comment.hash)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?
+            .flatten();
+
+            if let Some(sid) = sender_id {
+                comment.is_mine = Some(sid == uid);
+                comment.anon_token = Some(compute_squeak_anon_token(uid, topic_name, post_slug));
+            }
+        }
+        result.push(comment);
+    }
+
+    Ok(result)
 }
 
 pub async fn create_reply(
@@ -275,4 +426,286 @@ pub async fn get_replies(
     .map_err(map_sqlx_error::<PostError>)?;
 
     Ok(replies)
+}
+
+#[derive(Serialize)]
+pub struct InternalUserStats {
+    pub nib_count: i64,
+    pub squeak_count: i64,
+    pub upvote_count: i64,
+}
+
+fn get_anon_salt() -> String {
+    std::env::var("ANON_SALT").unwrap_or_else(|_| "twomice-dev-salt".to_string())
+}
+
+fn compute_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let salt = get_anon_salt();
+    let input = format!("{}:{}:{}:{}", user_id, board_name, post_slug, salt);
+    let hash = Sha256::digest(input.as_bytes());
+    hex::encode(&hash[..8])
+}
+
+fn compute_squeak_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let salt = get_anon_salt();
+    let input = format!("sqk:{}:{}:{}:{}", user_id, board_name, post_slug, salt);
+    let hash = Sha256::digest(input.as_bytes());
+    hex::encode(&hash[..8])
+}
+
+pub async fn resolve_post_id(
+    pool: &Pool<Postgres>,
+    topic_name: &str,
+    post_slug: &str,
+) -> Result<i64, PostError> {
+    let id: Option<i64> = sqlx::query_scalar(
+        "SELECT p.id FROM posts p JOIN topics t ON t.id = p.topic_id
+         WHERE t.name = $1 AND p.slug = $2",
+    )
+    .bind(topic_name)
+    .bind(post_slug)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+    id.ok_or(PostError::PostNotFound)
+}
+
+pub async fn resolve_comment_id(
+    pool: &Pool<Postgres>,
+    comment_hash: &str,
+) -> Result<i64, PostError> {
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
+        .bind(comment_hash)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+    id.ok_or(PostError::CommentNotFound)
+}
+
+pub async fn cast_post_vote(
+    pool: &Pool<Postgres>,
+    user_id: i64,
+    post_id: i64,
+    direction: i8,
+) -> Result<i64, PostError> {
+    if direction == 0 {
+        sqlx::query("DELETE FROM post_votes WHERE user_id = $1 AND post_id = $2")
+            .bind(user_id)
+            .bind(post_id)
+            .execute(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?;
+    } else {
+        let dir: i16 = if direction > 0 { 1 } else { -1 };
+        sqlx::query(
+            "INSERT INTO post_votes (user_id, post_id, direction)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, post_id) DO UPDATE SET direction = $3",
+        )
+        .bind(user_id)
+        .bind(post_id)
+        .bind(dir)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(direction), 0)::BIGINT FROM post_votes WHERE post_id = $1",
+    )
+    .bind(post_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+
+    Ok(count)
+}
+
+pub async fn cast_comment_vote(
+    pool: &Pool<Postgres>,
+    user_id: i64,
+    comment_id: i64,
+    direction: i8,
+) -> Result<i64, PostError> {
+    if direction == 0 {
+        sqlx::query("DELETE FROM comment_votes WHERE user_id = $1 AND comment_id = $2")
+            .bind(user_id)
+            .bind(comment_id)
+            .execute(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?;
+    } else {
+        let dir: i16 = if direction > 0 { 1 } else { -1 };
+        sqlx::query(
+            "INSERT INTO comment_votes (user_id, comment_id, direction)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, comment_id) DO UPDATE SET direction = $3",
+        )
+        .bind(user_id)
+        .bind(comment_id)
+        .bind(dir)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(direction), 0)::BIGINT FROM comment_votes WHERE comment_id = $1",
+    )
+    .bind(comment_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+
+    Ok(count)
+}
+
+pub async fn get_active_topics(
+    pool: &Pool<Postgres>,
+    limit: i64,
+) -> Result<Vec<BoardSummary>, PostError> {
+    let topics: Vec<BoardSummary> = sqlx::query_as(
+        "SELECT t.name, t.description, COUNT(p.id)::BIGINT as post_count
+         FROM topics t
+         LEFT JOIN posts p ON p.topic_id = t.id AND p.deleted = false
+         WHERE t.deleted = false
+         GROUP BY t.id, t.name, t.description
+         ORDER BY post_count DESC
+         LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+
+    Ok(topics)
+}
+
+pub async fn get_feed_nibs(
+    pool: &Pool<Postgres>,
+    sort: &str,
+    _app_env: &config::app_envs::AppEnvs,
+) -> Result<Vec<PostData>, PostError> {
+    let order = match sort {
+        "new" => "p.created_at DESC",
+        "top" => "COALESCE(pv.vote_count, 0) DESC, p.created_at DESC",
+        _ => "COALESCE(pv.vote_count, 0) DESC, p.created_at DESC",
+    };
+
+    let query = format!(
+        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                NULL::TEXT as anon_token,
+                NULL::BOOL as is_mine,
+                COALESCE(p.tags, '{{}}') as tags,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                p.view_count,
+                false as is_hot,
+                t.name as board_id
+         FROM posts p
+         JOIN topics t ON t.id = p.topic_id
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(SUM(direction), 0) as vote_count
+             FROM post_votes
+             WHERE post_id = p.id
+         ) pv ON true
+         WHERE p.deleted = false AND t.deleted = false
+         ORDER BY {}
+         LIMIT 100",
+        order
+    );
+
+    let nibs: Vec<PostData> = sqlx::query_as(sqlx::AssertSqlSafe(query.as_str()))
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+
+    Ok(nibs)
+}
+
+pub async fn get_user_nibs(
+    pool: &Pool<Postgres>,
+    user_id: i64,
+) -> Result<Vec<PostData>, PostError> {
+    let nibs: Vec<PostData> = sqlx::query_as(
+        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                NULL::TEXT as anon_token,
+                true as is_mine,
+                COALESCE(p.tags, '{{}}') as tags,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                p.view_count,
+                false as is_hot,
+                NULL::TEXT as board_id
+         FROM posts p
+         JOIN topics t ON t.id = p.topic_id
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(SUM(direction), 0) as vote_count
+             FROM post_votes
+             WHERE post_id = p.id
+         ) pv ON true
+         WHERE p.creator_id = $1
+         ORDER BY p.created_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+
+    Ok(nibs)
+}
+
+pub async fn get_user_content_stats(
+    pool: &Pool<Postgres>,
+    user_id: i64,
+) -> Result<InternalUserStats, PostError> {
+    let nib_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::BIGINT FROM posts WHERE creator_id = $1 AND deleted = false",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?
+    .unwrap_or(0);
+
+    let squeak_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::BIGINT FROM comments WHERE sender_id = $1 AND deleted = false",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?
+    .unwrap_or(0);
+
+    let post_upvotes: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(pv.direction), 0)::BIGINT
+         FROM post_votes pv
+         JOIN posts p ON p.id = pv.post_id
+         WHERE p.creator_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?
+    .unwrap_or(0);
+
+    let comment_upvotes: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(cv.direction), 0)::BIGINT
+         FROM comment_votes cv
+         JOIN comments c ON c.id = cv.comment_id
+         WHERE c.sender_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?
+    .unwrap_or(0);
+
+    Ok(InternalUserStats {
+        nib_count,
+        squeak_count,
+        upvote_count: post_upvotes + comment_upvotes,
+    })
 }

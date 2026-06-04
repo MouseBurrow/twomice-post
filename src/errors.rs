@@ -31,6 +31,11 @@ define_errors!(
             code: "P0004",
             status: BAD_REQUEST,
             message: "Topic name may contain only letters, digits, and underscores"
+        },
+        InvalidVoteDirection => {
+            code: "P0005",
+            status: BAD_REQUEST,
+            message: "Vote direction must be -1, 0, or 1"
         }
     }
 );

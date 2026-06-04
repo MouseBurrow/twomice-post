@@ -1,10 +1,10 @@
 use crate::errors::PostError;
 use crate::service;
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::Json;
 use config::app_data::AppData;
 use custom_headers::user_id::UserId;
-use easy_errors::json_empty;
 
 use super::ContentBody;
 
@@ -13,7 +13,7 @@ pub async fn create_reply(
     Path((topic_name, post_slug, comment_hash)): Path<(String, String, String)>,
     user_id: UserId,
     Json(body): Json<ContentBody>,
-) -> Result<Json<serde_json::Value>, PostError> {
+) -> Result<StatusCode, PostError> {
     service::create_reply(
         &app.pool,
         user_id.into(),
@@ -24,7 +24,7 @@ pub async fn create_reply(
     )
     .await?;
 
-    Ok(json_empty())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn get_replies(

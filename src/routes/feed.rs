@@ -1,0 +1,24 @@
+use crate::errors::PostError;
+use crate::service;
+use axum::extract::{Query, State};
+use axum::Json;
+use config::app_data::AppData;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct FeedQuery {
+    #[serde(default = "default_sort")]
+    pub sort: String,
+}
+
+fn default_sort() -> String {
+    "hot".to_string()
+}
+
+pub async fn get_feed(
+    State(app): State<AppData>,
+    Query(query): Query<FeedQuery>,
+) -> Result<Json<Vec<service::PostData>>, PostError> {
+    let nibs = service::get_feed_nibs(&app.pool, &query.sort, &app.config.app_env).await?;
+    Ok(Json(nibs))
+}
