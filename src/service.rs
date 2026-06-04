@@ -5,6 +5,21 @@ use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
 
+async fn resolve_post_b62(
+    pool: &Pool<Postgres>,
+    post_b62_or_slug: &str,
+) -> Result<i64, PostError> {
+    if let Some(id) = utils::decode_b62(post_b62_or_slug) {
+        return Ok(id);
+    }
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM posts WHERE slug = $1")
+        .bind(post_b62_or_slug)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+    id.ok_or(PostError::PostNotFound)
+}
+
 #[derive(FromRow, Serialize)]
 pub struct TopicData {
     pub name: String,
@@ -92,7 +107,6 @@ pub async fn create_post(
     creator_id: i64,
     topic_name: &str,
     title: &str,
-    slug: &str,
     content: &str,
     image_url: &Option<String>,
 ) -> Result<String, PostError> {
@@ -103,38 +117,38 @@ pub async fn create_post(
         .map_err(map_sqlx_error::<PostError>)?
         .ok_or(PostError::TopicNotFound)?;
 
-    let mut final_slug = String::new();
+    let post_id: i64 = sqlx::query_scalar(
+        "INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
+         VALUES ($1, $2, $3, '', $4, $5)
+         RETURNING id",
+    )
+    .bind(creator_id)
+    .bind(topic_id)
+    .bind(title)
+    .bind(content)
+    .bind(image_url)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
 
-    insert_retry_on_duplicate::<PostError, _, _>(|| {
-        let fs = format!("{}-{}", slug, utils::random_b62(5));
-        final_slug = fs.clone();
-        async move {
-            sqlx::query(
-                "INSERT INTO posts (creator_id, topic_id, title, slug, content, image_url)
-                 VALUES ($1, $2, $3, $4, $5, $6)",
-            )
-            .bind(creator_id)
-            .bind(topic_id)
-            .bind(title)
-            .bind(&fs)
-            .bind(content)
-            .bind(image_url)
-            .execute(pool)
-            .await?;
-            Ok(())
-        }
-    })
-    .await?;
+    let slug = utils::encode_b62(post_id);
+    sqlx::query("UPDATE posts SET slug = $1 WHERE id = $2")
+        .bind(&slug)
+        .bind(post_id)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
 
-    Ok(final_slug)
+    Ok(slug)
 }
 
 pub async fn get_post(
     pool: &Pool<Postgres>,
-    topic_name: &str,
-    post_slug: &str,
+    post_b62_or_slug: &str,
     maybe_user_id: Option<i64>,
 ) -> Result<PostData, PostError> {
+    let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
+
     let post: Option<PostData> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
@@ -152,19 +166,17 @@ pub async fn get_post(
              FROM post_votes
              WHERE post_id = p.id
          ) pv ON true
-         WHERE t.name = $1 AND p.slug = $2",
+         WHERE p.id = $1",
     )
-    .bind(topic_name)
-    .bind(post_slug)
+    .bind(post_id)
     .fetch_optional(pool)
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
     let mut post = post.ok_or(PostError::PostNotFound)?;
 
-    let pid = resolve_post_id(pool, topic_name, post_slug).await?;
     let _ = sqlx::query("UPDATE posts SET view_count = view_count + 1 WHERE id = $1")
-        .bind(pid)
+        .bind(post_id)
         .execute(pool)
         .await;
 
@@ -172,12 +184,9 @@ pub async fn get_post(
 
     if let Some(uid) = maybe_user_id {
         let creator_id: Option<i64> = sqlx::query_scalar(
-            "SELECT p.creator_id FROM posts p
-             JOIN topics t ON t.id = p.topic_id
-             WHERE t.name = $1 AND p.slug = $2",
+            "SELECT creator_id FROM posts WHERE id = $1",
         )
-        .bind(topic_name)
-        .bind(post_slug)
+        .bind(post_id)
         .fetch_optional(pool)
         .await
         .map_err(map_sqlx_error::<PostError>)?
@@ -186,7 +195,15 @@ pub async fn get_post(
         if let Some(cid) = creator_id {
             post.is_mine = Some(cid == uid);
             if cid == uid {
-                post.anon_token = Some(compute_anon_token(uid, topic_name, post_slug));
+                let topic_name: String = sqlx::query_scalar(
+                    "SELECT t.name FROM topics t JOIN posts p ON p.topic_id = t.id WHERE p.id = $1",
+                )
+                .bind(post_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(map_sqlx_error::<PostError>)?
+                .unwrap_or_default();
+                post.anon_token = Some(compute_anon_token(uid, &topic_name, post_b62_or_slug));
             }
         }
     }
@@ -229,17 +246,18 @@ pub async fn get_all_post(
         post.is_hot = post.vote_count > 10 || post.view_count > 100;
 
         if let Some(uid) = maybe_user_id {
-            let creator_id: Option<i64> = sqlx::query_scalar(
-                "SELECT p.creator_id FROM posts p
-                 JOIN topics t ON t.id = p.topic_id
-                 WHERE t.name = $1 AND p.slug = $2",
-            )
-            .bind(topic_name)
-            .bind(&post.slug)
-            .fetch_optional(pool)
-            .await
-            .map_err(map_sqlx_error::<PostError>)?
-            .flatten();
+            let pid = utils::decode_b62(&post.slug);
+            let creator_id: Option<i64> = match pid {
+                Some(id) => sqlx::query_scalar(
+                    "SELECT creator_id FROM posts WHERE id = $1",
+                )
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+                .map_err(map_sqlx_error::<PostError>)?
+                .flatten(),
+                None => None,
+            };
 
             if let Some(cid) = creator_id {
                 post.is_mine = Some(cid == uid);
@@ -276,20 +294,11 @@ pub type ReplyData = NoteData;
 pub async fn create_comment(
     pool: &Pool<Postgres>,
     sender_id: i64,
-    topic_name: &str,
-    post_slug: &str,
+    _topic_name: &str,
+    post_b62_or_slug: &str,
     content: &str,
 ) -> Result<(), PostError> {
-    let post_id: i64 = sqlx::query_scalar(
-        "SELECT p.id FROM posts p JOIN topics t ON t.id = p.topic_id
-         WHERE t.name = $1 AND p.slug = $2",
-    )
-    .bind(topic_name)
-    .bind(post_slug)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?
-    .ok_or(PostError::PostNotFound)?;
+    let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
     insert_retry_on_duplicate::<PostError, _, _>(|| async {
         let hash = utils::random_b62(5);
@@ -311,27 +320,26 @@ pub async fn create_comment(
 pub async fn get_all_comments(
     pool: &Pool<Postgres>,
     topic_name: &str,
-    post_slug: &str,
+    post_b62_or_slug: &str,
     maybe_user_id: Option<i64>,
 ) -> Result<Vec<CommentData>, PostError> {
+    let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
+
     let comments: Vec<CommentData> = sqlx::query_as(
         "SELECT c.hash, c.content, c.created_at, c.deleted,
                 COALESCE(cv.vote_count, 0)::BIGINT as vote_count,
                 NULL::TEXT as anon_token,
                 NULL::BOOL as is_mine
          FROM comments c
-         JOIN posts p ON p.id = c.post_id
-         JOIN topics t ON t.id = p.topic_id
          LEFT JOIN LATERAL (
              SELECT COALESCE(SUM(direction), 0) as vote_count
              FROM comment_votes
              WHERE comment_id = c.id
          ) cv ON true
-         WHERE t.name = $1 AND p.slug = $2
+         WHERE c.post_id = $1
          ORDER BY c.created_at",
     )
-    .bind(topic_name)
-    .bind(post_slug)
+    .bind(post_id)
     .fetch_all(pool)
     .await
     .map_err(map_sqlx_error::<PostError>)?;
@@ -350,7 +358,7 @@ pub async fn get_all_comments(
 
             if let Some(sid) = sender_id {
                 comment.is_mine = Some(sid == uid);
-                comment.anon_token = Some(compute_squeak_anon_token(uid, topic_name, post_slug));
+                comment.anon_token = Some(compute_squeak_anon_token(uid, topic_name, post_b62_or_slug));
             }
         }
         result.push(comment);
@@ -362,8 +370,8 @@ pub async fn get_all_comments(
 pub async fn create_reply(
     pool: &Pool<Postgres>,
     sender_id: i64,
-    topic_name: &str,
-    post_slug: &str,
+    _topic_name: &str,
+    post_b62_or_slug: &str,
     comment_hash: &str,
     content: &str,
 ) -> Result<(), PostError> {
@@ -374,16 +382,7 @@ pub async fn create_reply(
         .map_err(map_sqlx_error::<PostError>)?
         .ok_or(PostError::CommentNotFound)?;
 
-    let post_id: i64 = sqlx::query_scalar(
-        "SELECT p.id FROM posts p JOIN topics t ON t.id = p.topic_id
-         WHERE t.name = $1 AND p.slug = $2",
-    )
-    .bind(topic_name)
-    .bind(post_slug)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?
-    .ok_or(PostError::PostNotFound)?;
+    let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
     insert_retry_on_duplicate::<PostError, _, _>(|| async {
         let hash = utils::random_b62(5);
@@ -405,21 +404,20 @@ pub async fn create_reply(
 
 pub async fn get_replies(
     pool: &Pool<Postgres>,
-    topic_name: &str,
-    post_slug: &str,
+    _topic_name: &str,
+    post_b62_or_slug: &str,
     comment_hash: &str,
 ) -> Result<Vec<ReplyData>, PostError> {
+    let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
+
     let replies: Vec<ReplyData> = sqlx::query_as(
         "SELECT r.hash, r.content, r.created_at, r.deleted
          FROM replies r
-         JOIN posts p ON p.id = r.post_id
-         JOIN topics t ON t.id = p.topic_id
          JOIN comments c ON c.id = r.comment_id
-         WHERE t.name = $1 AND p.slug = $2 AND c.hash = $3
+         WHERE r.post_id = $1 AND c.hash = $2
          ORDER BY r.created_at",
     )
-    .bind(topic_name)
-    .bind(post_slug)
+    .bind(post_id)
     .bind(comment_hash)
     .fetch_all(pool)
     .await
@@ -457,19 +455,10 @@ fn compute_squeak_anon_token(user_id: i64, board_name: &str, post_slug: &str) ->
 
 pub async fn resolve_post_id(
     pool: &Pool<Postgres>,
-    topic_name: &str,
-    post_slug: &str,
+    _topic_name: &str,
+    post_b62_or_slug: &str,
 ) -> Result<i64, PostError> {
-    let id: Option<i64> = sqlx::query_scalar(
-        "SELECT p.id FROM posts p JOIN topics t ON t.id = p.topic_id
-         WHERE t.name = $1 AND p.slug = $2",
-    )
-    .bind(topic_name)
-    .bind(post_slug)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
-    id.ok_or(PostError::PostNotFound)
+    resolve_post_b62(pool, post_b62_or_slug).await
 }
 
 pub async fn resolve_comment_id(

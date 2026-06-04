@@ -7,7 +7,6 @@ use config::app_data::AppData;
 use custom_headers::optional_user_id::OptionalUserId;
 use custom_headers::user_id::UserId;
 use serde::Deserialize;
-use slugify::slugify;
 
 #[derive(Deserialize)]
 pub struct PostBody {
@@ -22,13 +21,11 @@ pub async fn create_post(
     user_id: UserId,
     Json(body): Json<PostBody>,
 ) -> Result<StatusCode, PostError> {
-    let slug_str = slugify!(&body.title);
     let _slug = service::create_post(
         &app.pool,
         user_id.into(),
         &topic_name,
         &body.title,
-        &slug_str,
         &body.content,
         &body.image_url,
     )
@@ -48,9 +45,9 @@ pub async fn get_all_posts(
 
 pub async fn get_post(
     State(app): State<AppData>,
-    Path((topic_name, post_slug)): Path<(String, String)>,
+    Path((_topic_name, post_slug)): Path<(String, String)>,
     OptionalUserId(maybe_user_id): OptionalUserId,
 ) -> Result<Json<service::PostData>, PostError> {
-    let post = service::get_post(&app.pool, &topic_name, &post_slug, maybe_user_id).await?;
+    let post = service::get_post(&app.pool, &post_slug, maybe_user_id).await?;
     Ok(Json(post))
 }
