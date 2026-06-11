@@ -4,6 +4,7 @@ use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
+use std::sync::OnceLock;
 
 async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Result<i64, PostError> {
     if let Some(id) = utils::decode_b62(post_b62_or_slug) {
@@ -470,8 +471,13 @@ pub struct InternalUserStats {
     pub upvote_count: i64,
 }
 
-fn get_anon_salt() -> String {
-    std::env::var("ANON_SALT").unwrap_or_else(|_| "twomice-dev-salt".to_string())
+fn get_anon_salt() -> &'static str {
+    static SALT: OnceLock<String> = OnceLock::new();
+    SALT.get_or_init(|| {
+        std::env::var("ANON_SALT").unwrap_or_else(|_| {
+            utils::random_b62(32)
+        })
+    })
 }
 
 fn compute_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String {
