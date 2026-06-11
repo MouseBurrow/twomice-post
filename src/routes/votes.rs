@@ -18,7 +18,8 @@ pub async fn cast_post_vote(
     Json(body): Json<VoteBody>,
 ) -> Result<Json<serde_json::Value>, PostError> {
     let post_id = service::resolve_post_id(&app.pool, &_topic_name, &post_slug).await?;
-    let vote_count = service::cast_post_vote(&app.pool, user_id.into(), post_id, body.direction).await?;
+    let vote_count =
+        service::cast_post_vote(&app.pool, user_id.into(), post_id, body.direction).await?;
     Ok(Json(serde_json::json!({ "vote_count": vote_count })))
 }
 
@@ -29,6 +30,7 @@ pub async fn cast_comment_vote(
     Json(body): Json<VoteBody>,
 ) -> Result<Json<serde_json::Value>, PostError> {
     let comment_id = service::resolve_comment_id(&app.pool, &comment_hash).await?;
-    let vote_count = service::cast_comment_vote(&app.pool, user_id.into(), comment_id, body.direction).await?;
+    let vote_count =
+        service::cast_comment_vote(&app.pool, user_id.into(), comment_id, body.direction).await?;
     Ok(Json(serde_json::json!({ "vote_count": vote_count })))
 }

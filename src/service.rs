@@ -5,10 +5,7 @@ use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
 
-async fn resolve_post_b62(
-    pool: &Pool<Postgres>,
-    post_b62_or_slug: &str,
-) -> Result<i64, PostError> {
+async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Result<i64, PostError> {
     if let Some(id) = utils::decode_b62(post_b62_or_slug) {
         return Ok(id);
     }
@@ -183,14 +180,13 @@ pub async fn get_post(
     post.is_hot = post.vote_count > 10 || post.view_count > 100;
 
     if let Some(uid) = maybe_user_id {
-        let creator_id: Option<i64> = sqlx::query_scalar(
-            "SELECT creator_id FROM posts WHERE id = $1",
-        )
-        .bind(post_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(map_sqlx_error::<PostError>)?
-        .flatten();
+        let creator_id: Option<i64> =
+            sqlx::query_scalar("SELECT creator_id FROM posts WHERE id = $1")
+                .bind(post_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(map_sqlx_error::<PostError>)?
+                .flatten();
 
         if let Some(cid) = creator_id {
             post.is_mine = Some(cid == uid);
@@ -248,14 +244,12 @@ pub async fn get_all_post(
         if let Some(uid) = maybe_user_id {
             let pid = utils::decode_b62(&post.slug);
             let creator_id: Option<i64> = match pid {
-                Some(id) => sqlx::query_scalar(
-                    "SELECT creator_id FROM posts WHERE id = $1",
-                )
-                .bind(id)
-                .fetch_optional(pool)
-                .await
-                .map_err(map_sqlx_error::<PostError>)?
-                .flatten(),
+                Some(id) => sqlx::query_scalar("SELECT creator_id FROM posts WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(map_sqlx_error::<PostError>)?
+                    .flatten(),
                 None => None,
             };
 
@@ -347,18 +341,18 @@ pub async fn get_all_comments(
     let mut result = Vec::new();
     for mut comment in comments {
         if let Some(uid) = maybe_user_id {
-            let sender_id: Option<i64> = sqlx::query_scalar(
-                "SELECT sender_id FROM comments WHERE hash = $1",
-            )
-            .bind(&comment.hash)
-            .fetch_optional(pool)
-            .await
-            .map_err(map_sqlx_error::<PostError>)?
-            .flatten();
+            let sender_id: Option<i64> =
+                sqlx::query_scalar("SELECT sender_id FROM comments WHERE hash = $1")
+                    .bind(&comment.hash)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(map_sqlx_error::<PostError>)?
+                    .flatten();
 
             if let Some(sid) = sender_id {
                 comment.is_mine = Some(sid == uid);
-                comment.anon_token = Some(compute_squeak_anon_token(uid, topic_name, post_b62_or_slug));
+                comment.anon_token =
+                    Some(compute_squeak_anon_token(uid, topic_name, post_b62_or_slug));
             }
         }
         result.push(comment);
@@ -618,7 +612,7 @@ pub async fn get_user_nibs(
     pool: &Pool<Postgres>,
     user_id: i64,
 ) -> Result<Vec<PostData>, PostError> {
-    let nibs: Vec<PostData> = sqlx::query_as(
+    let mut nibs: Vec<PostData> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                 NULL::TEXT as anon_token,
@@ -627,7 +621,7 @@ pub async fn get_user_nibs(
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                 p.view_count,
                 false as is_hot,
-                NULL::TEXT as board_id
+                t.name as board_id
          FROM posts p
          JOIN topics t ON t.id = p.topic_id
          LEFT JOIN LATERAL (
@@ -642,6 +636,12 @@ pub async fn get_user_nibs(
     .fetch_all(pool)
     .await
     .map_err(map_sqlx_error::<PostError>)?;
+
+    for nib in &mut nibs {
+        nib.is_hot = nib.vote_count > 10 || nib.view_count > 100;
+        let board = nib.board_id.as_deref().unwrap_or("");
+        nib.anon_token = Some(compute_anon_token(user_id, board, &nib.slug));
+    }
 
     Ok(nibs)
 }
