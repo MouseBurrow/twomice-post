@@ -246,7 +246,7 @@ pub async fn get_post(
     let row: Option<PostRow> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                COALESCE(p.tags, '{{}}') as tags,
+                COALESCE(p.tags, '{}') as tags,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                 p.view_count,
                 t.name as board_id,
@@ -317,7 +317,7 @@ pub async fn get_all_posts(
     let rows: Vec<PostRow> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                COALESCE(p.tags, '{{}}') as tags,
+                COALESCE(p.tags, '{}') as tags,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                 p.view_count,
                 t.name as board_id,
@@ -741,7 +741,7 @@ pub async fn get_feed_posts(
         "new" => sqlx::query_as(
             "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                     COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                    COALESCE(p.tags, '{{}}') as tags,
+                    COALESCE(p.tags, '{}') as tags,
                     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                     p.view_count,
                     t.name as board_id,
@@ -764,7 +764,7 @@ pub async fn get_feed_posts(
         "top" => sqlx::query_as(
             "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                     COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                    COALESCE(p.tags, '{{}}') as tags,
+                    COALESCE(p.tags, '{}') as tags,
                     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                     p.view_count,
                     t.name as board_id,
@@ -787,7 +787,7 @@ pub async fn get_feed_posts(
         _ => sqlx::query_as(
             "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                     COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                    COALESCE(p.tags, '{{}}') as tags,
+                    COALESCE(p.tags, '{}') as tags,
                     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                     p.view_count,
                     t.name as board_id,
@@ -839,7 +839,7 @@ pub async fn get_user_posts(
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                 NULL::TEXT as anon_token,
                 true as is_mine,
-                COALESCE(p.tags, '{{}}') as tags,
+                COALESCE(p.tags, '{}') as tags,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                 p.view_count,
                 false as is_hot,
