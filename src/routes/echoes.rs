@@ -7,13 +7,13 @@ use config::app_data::AppData;
 use custom_headers::optional_user_id::OptionalUserId;
 use custom_headers::user_id::UserId;
 
-use super::ContentBody;
+use super::EchoBody;
 
 pub async fn create_reply(
     State(app): State<AppData>,
     Path((topic_name, post_slug, comment_hash)): Path<(String, String, String)>,
     user_id: UserId,
-    Json(body): Json<ContentBody>,
+    Json(body): Json<EchoBody>,
 ) -> Result<StatusCode, PostError> {
     service::create_reply(
         &app.pool,
@@ -22,6 +22,7 @@ pub async fn create_reply(
         &post_slug,
         &comment_hash,
         &body.content,
+        body.reply_hash.as_deref(),
     )
     .await?;
 

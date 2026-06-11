@@ -483,6 +483,7 @@ pub async fn create_reply(
     post_b62_or_slug: &str,
     comment_hash: &str,
     content: &str,
+    reply_hash: Option<&str>,
 ) -> Result<(), PostError> {
     if content.len() > MAX_CONTENT_LEN {
         return Err(PostError::ContentTooLong);
@@ -497,16 +498,34 @@ pub async fn create_reply(
 
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
+    let reply_id: Option<i64> = if let Some(r_hash) = reply_hash {
+        let r_id: Option<i64> = sqlx::query_scalar(
+            "SELECT r.id FROM replies r
+             WHERE r.hash = $1 AND r.post_id = $2 AND r.comment_id = $3 AND r.deleted = false",
+        )
+        .bind(r_hash)
+        .bind(post_id)
+        .bind(comment_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+
+        Some(r_id.ok_or(PostError::ReplyNotFound)?)
+    } else {
+        None
+    };
+
     insert_retry_on_duplicate::<PostError, _, _>(|| async {
         let hash = utils::random_b62(5);
         sqlx::query(
-            "INSERT INTO replies (hash, sender_id, post_id, comment_id, content)
-             VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO replies (hash, sender_id, post_id, comment_id, reply_id, content)
+             VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(&hash)
         .bind(sender_id)
         .bind(post_id)
         .bind(comment_id)
+        .bind(reply_id)
         .bind(content)
         .execute(pool)
         .await?;

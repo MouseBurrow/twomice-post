@@ -13,3 +13,9 @@ use serde::Deserialize;
 pub(crate) struct ContentBody {
     pub content: String,
 }
+
+#[derive(Deserialize)]
+pub(crate) struct EchoBody {
+    pub content: String,
+    pub reply_hash: Option<String>,
+}
