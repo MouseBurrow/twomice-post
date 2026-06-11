@@ -89,6 +89,22 @@ struct ReplyRow {
     sender_id: i64,
 }
 
+#[derive(FromRow)]
+struct PostRow {
+    title: String,
+    slug: String,
+    content: String,
+    image_url: Option<String>,
+    created_at: DateTime<Utc>,
+    deleted: bool,
+    vote_count: i64,
+    tags: Vec<String>,
+    reply_count: i64,
+    view_count: i64,
+    board_id: Option<String>,
+    creator_id: Option<i64>,
+}
+
 #[derive(FromRow, Serialize)]
 pub struct PostData {
     pub title: String,
@@ -166,16 +182,14 @@ pub async fn get_post(
 ) -> Result<PostData, PostError> {
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
-    let post: Option<PostData> = sqlx::query_as(
+    let row: Option<PostRow> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                NULL::TEXT as anon_token,
-                NULL::BOOL as is_mine,
                 COALESCE(p.tags, '{{}}') as tags,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                 p.view_count,
-                false as is_hot,
-                NULL::TEXT as board_id
+                t.name as board_id,
+                p.creator_id
          FROM posts p
          JOIN topics t ON t.id = p.topic_id
          LEFT JOIN LATERAL (
@@ -190,41 +204,48 @@ pub async fn get_post(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let mut post = post.ok_or(PostError::PostNotFound)?;
+    let row = row.ok_or(PostError::PostNotFound)?;
 
     let _ = sqlx::query("UPDATE posts SET view_count = view_count + 1 WHERE id = $1")
         .bind(post_id)
         .execute(pool)
         .await;
 
-    post.is_hot = post.vote_count > 10 || post.view_count > 100;
+    let is_hot = row.vote_count > 10 || row.view_count > 100;
 
-    if let Some(uid) = maybe_user_id {
-        let creator_id: Option<i64> =
-            sqlx::query_scalar("SELECT creator_id FROM posts WHERE id = $1")
-                .bind(post_id)
-                .fetch_optional(pool)
-                .await
-                .map_err(map_sqlx_error::<PostError>)?
-                .flatten();
-
-        if let Some(cid) = creator_id {
-            post.is_mine = Some(cid == uid);
-            if cid == uid {
-                let topic_name: String = sqlx::query_scalar(
-                    "SELECT t.name FROM topics t JOIN posts p ON p.topic_id = t.id WHERE p.id = $1",
-                )
-                .bind(post_id)
-                .fetch_optional(pool)
-                .await
-                .map_err(map_sqlx_error::<PostError>)?
-                .unwrap_or_default();
-                post.anon_token = Some(compute_anon_token(uid, &topic_name, post_b62_or_slug));
-            }
+    let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+        if let Some(cid) = row.creator_id {
+            let mine = cid == uid;
+            let token = if mine {
+                let board = row.board_id.as_deref().unwrap_or("");
+                Some(compute_anon_token(uid, board, &row.slug))
+            } else {
+                None
+            };
+            (Some(mine), token)
+        } else {
+            (None, None)
         }
-    }
+    } else {
+        (None, None)
+    };
 
-    Ok(post)
+    Ok(PostData {
+        title: row.title,
+        slug: row.slug,
+        content: row.content,
+        image_url: row.image_url,
+        created_at: row.created_at,
+        deleted: row.deleted,
+        vote_count: row.vote_count,
+        anon_token,
+        is_mine,
+        tags: row.tags,
+        reply_count: row.reply_count,
+        view_count: row.view_count,
+        is_hot,
+        board_id: row.board_id,
+    })
 }
 
 pub async fn get_all_post(
@@ -232,16 +253,14 @@ pub async fn get_all_post(
     topic_name: &str,
     maybe_user_id: Option<i64>,
 ) -> Result<Vec<PostData>, PostError> {
-    let posts: Vec<PostData> = sqlx::query_as(
+    let rows: Vec<PostRow> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                NULL::TEXT as anon_token,
-                NULL::BOOL as is_mine,
                 COALESCE(p.tags, '{{}}') as tags,
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
                 p.view_count,
-                false as is_hot,
-                NULL::TEXT as board_id
+                t.name as board_id,
+                p.creator_id
          FROM posts p
          JOIN topics t ON t.id = p.topic_id
          LEFT JOIN LATERAL (
@@ -257,32 +276,42 @@ pub async fn get_all_post(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let mut result = Vec::new();
-    for mut post in posts {
-        post.is_hot = post.vote_count > 10 || post.view_count > 100;
+    let result = rows.into_iter().map(|row| {
+        let is_hot = row.vote_count > 10 || row.view_count > 100;
 
-        if let Some(uid) = maybe_user_id {
-            let pid = utils::decode_b62(&post.slug);
-            let creator_id: Option<i64> = match pid {
-                Some(id) => sqlx::query_scalar("SELECT creator_id FROM posts WHERE id = $1")
-                    .bind(id)
-                    .fetch_optional(pool)
-                    .await
-                    .map_err(map_sqlx_error::<PostError>)?
-                    .flatten(),
-                None => None,
-            };
-
-            if let Some(cid) = creator_id {
-                post.is_mine = Some(cid == uid);
-                if cid == uid {
-                    post.anon_token = Some(compute_anon_token(uid, topic_name, &post.slug));
-                }
+        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+            if let Some(cid) = row.creator_id {
+                let mine = cid == uid;
+                let token = if mine {
+                    Some(compute_anon_token(uid, topic_name, &row.slug))
+                } else {
+                    None
+                };
+                (Some(mine), token)
+            } else {
+                (None, None)
             }
-        }
+        } else {
+            (None, None)
+        };
 
-        result.push(post);
-    }
+        PostData {
+            title: row.title,
+            slug: row.slug,
+            content: row.content,
+            image_url: row.image_url,
+            created_at: row.created_at,
+            deleted: row.deleted,
+            vote_count: row.vote_count,
+            anon_token,
+            is_mine,
+            tags: row.tags,
+            reply_count: row.reply_count,
+            view_count: row.view_count,
+            is_hot,
+            board_id: row.board_id,
+        }
+    }).collect();
 
     Ok(result)
 }
@@ -620,39 +649,95 @@ pub async fn get_feed_nibs(
     sort: &str,
     _app_env: &config::app_envs::AppEnvs,
 ) -> Result<Vec<PostData>, PostError> {
-    let order = match sort {
-        "new" => "p.created_at DESC",
-        "top" => "COALESCE(pv.vote_count, 0) DESC, p.created_at DESC",
-        _ => "COALESCE(pv.vote_count, 0) DESC, p.created_at DESC",
-    };
-
-    let query = format!(
-        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
-                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                NULL::TEXT as anon_token,
-                NULL::BOOL as is_mine,
-                COALESCE(p.tags, '{{}}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
-                p.view_count,
-                false as is_hot,
-                t.name as board_id
-         FROM posts p
-         JOIN topics t ON t.id = p.topic_id
-         LEFT JOIN LATERAL (
-             SELECT COALESCE(SUM(direction), 0) as vote_count
-             FROM post_votes
-             WHERE post_id = p.id
-         ) pv ON true
-         WHERE p.deleted = false AND t.deleted = false
-         ORDER BY {}
-         LIMIT 100",
-        order
-    );
-
-    let nibs: Vec<PostData> = sqlx::query_as(sqlx::AssertSqlSafe(query.as_str()))
+    let rows: Vec<PostRow> = match sort {
+        "new" => sqlx::query_as(
+            "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                    COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                    COALESCE(p.tags, '{{}}') as tags,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                    p.view_count,
+                    t.name as board_id,
+                    p.creator_id
+             FROM posts p
+             JOIN topics t ON t.id = p.topic_id
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(SUM(direction), 0) as vote_count
+                 FROM post_votes
+                 WHERE post_id = p.id
+             ) pv ON true
+             WHERE p.deleted = false AND t.deleted = false
+             ORDER BY p.created_at DESC
+             LIMIT 100",
+        )
         .fetch_all(pool)
         .await
-        .map_err(map_sqlx_error::<PostError>)?;
+        .map_err(map_sqlx_error::<PostError>)?,
+
+        "top" => sqlx::query_as(
+            "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                    COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                    COALESCE(p.tags, '{{}}') as tags,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                    p.view_count,
+                    t.name as board_id,
+                    p.creator_id
+             FROM posts p
+             JOIN topics t ON t.id = p.topic_id
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(SUM(direction), 0) as vote_count
+                 FROM post_votes
+                 WHERE post_id = p.id
+             ) pv ON true
+             WHERE p.deleted = false AND t.deleted = false
+             ORDER BY COALESCE(pv.vote_count, 0) DESC, p.created_at DESC
+             LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?,
+
+        _ => sqlx::query_as(
+            "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
+                    COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
+                    COALESCE(p.tags, '{{}}') as tags,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                    p.view_count,
+                    t.name as board_id,
+                    p.creator_id
+             FROM posts p
+             JOIN topics t ON t.id = p.topic_id
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(SUM(direction), 0) as vote_count
+                 FROM post_votes
+                 WHERE post_id = p.id
+             ) pv ON true
+             WHERE p.deleted = false AND t.deleted = false
+             ORDER BY COALESCE(pv.vote_count, 0) DESC, p.created_at DESC
+             LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?,
+    };
+
+    let nibs = rows.into_iter().map(|row| {
+        PostData {
+            title: row.title,
+            slug: row.slug,
+            content: row.content,
+            image_url: row.image_url,
+            created_at: row.created_at,
+            deleted: row.deleted,
+            vote_count: row.vote_count,
+            anon_token: None,
+            is_mine: None,
+            tags: row.tags,
+            reply_count: row.reply_count,
+            view_count: row.view_count,
+            is_hot: row.vote_count > 10 || row.view_count > 100,
+            board_id: row.board_id,
+        }
+    }).collect();
 
     Ok(nibs)
 }
