@@ -8,8 +8,8 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct InternalUserStats {
-    pub nib_count: i64,
-    pub squeak_count: i64,
+    pub post_count: i64,
+    pub comment_count: i64,
     pub upvote_count: i64,
 }
 
@@ -20,8 +20,8 @@ pub async fn get_internal_user_stats(
 ) -> Result<Json<InternalUserStats>, PostError> {
     let stats = service::get_user_content_stats(&app.pool, user_id).await?;
     Ok(Json(InternalUserStats {
-        nib_count: stats.nib_count,
-        squeak_count: stats.squeak_count,
+        post_count: stats.post_count,
+        comment_count: stats.comment_count,
         upvote_count: stats.upvote_count,
     }))
 }

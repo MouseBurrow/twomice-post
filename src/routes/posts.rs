@@ -41,7 +41,7 @@ pub async fn get_all_posts(
     Path(topic_name): Path<String>,
     OptionalUserId(maybe_user_id): OptionalUserId,
 ) -> Result<Json<Vec<service::PostData>>, PostError> {
-    let posts = service::get_all_post(&app.pool, &topic_name, maybe_user_id).await?;
+    let posts = service::get_all_posts(&app.pool, &topic_name, maybe_user_id).await?;
     Ok(Json(posts))
 }
 

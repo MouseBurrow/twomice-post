@@ -23,14 +23,14 @@ async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Resu
 }
 
 #[derive(FromRow, Serialize)]
-pub struct TopicData {
+pub struct BoardData {
     pub name: String,
     pub description: String,
     pub created_at: DateTime<Utc>,
     pub deleted: bool,
 }
 
-pub async fn create_topic(
+pub async fn create_board(
     pool: &Pool<Postgres>,
     name: &str,
     description: &str,
@@ -45,26 +45,26 @@ pub async fn create_topic(
     Ok(())
 }
 
-pub async fn get_topic(pool: &Pool<Postgres>, name: &str) -> Result<TopicData, PostError> {
-    let topic: Option<TopicData> =
+pub async fn get_board(pool: &Pool<Postgres>, name: &str) -> Result<BoardData, PostError> {
+    let board: Option<BoardData> =
         sqlx::query_as("SELECT name, description, created_at, deleted FROM topics WHERE name = $1")
             .bind(name)
             .fetch_optional(pool)
             .await
             .map_err(map_sqlx_error::<PostError>)?;
 
-    topic.ok_or(PostError::TopicNotFound)
+    board.ok_or(PostError::TopicNotFound)
 }
 
-pub async fn get_all_topics(pool: &Pool<Postgres>) -> Result<Vec<TopicData>, PostError> {
-    let topics: Vec<TopicData> = sqlx::query_as(
+pub async fn get_all_boards(pool: &Pool<Postgres>) -> Result<Vec<BoardData>, PostError> {
+    let boards: Vec<BoardData> = sqlx::query_as(
         "SELECT name, description, created_at, deleted FROM topics ORDER BY created_at",
     )
     .fetch_all(pool)
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    Ok(topics)
+    Ok(boards)
 }
 
 #[derive(FromRow, Serialize)]
@@ -214,7 +214,7 @@ async fn validate_tags(pool: &Pool<Postgres>, topic_id: i64, tags: &[String]) ->
     Ok(())
 }
 
-pub async fn get_topic_tags(
+pub async fn get_board_tags(
     pool: &Pool<Postgres>,
     topic_name: &str,
 ) -> Result<Vec<String>, PostError> {
@@ -309,7 +309,7 @@ pub async fn get_post(
     })
 }
 
-pub async fn get_all_post(
+pub async fn get_all_posts(
     pool: &Pool<Postgres>,
     topic_name: &str,
     maybe_user_id: Option<i64>,
@@ -583,8 +583,8 @@ pub async fn get_replies(
 
 #[derive(Serialize)]
 pub struct InternalUserStats {
-    pub nib_count: i64,
-    pub squeak_count: i64,
+    pub post_count: i64,
+    pub comment_count: i64,
     pub upvote_count: i64,
 }
 
@@ -711,11 +711,11 @@ pub async fn cast_comment_vote(
     Ok(count)
 }
 
-pub async fn get_active_topics(
+pub async fn get_active_boards(
     pool: &Pool<Postgres>,
     limit: i64,
 ) -> Result<Vec<BoardSummary>, PostError> {
-    let topics: Vec<BoardSummary> = sqlx::query_as(
+    let boards: Vec<BoardSummary> = sqlx::query_as(
         "SELECT t.name, t.description, COUNT(p.id)::BIGINT as post_count
          FROM topics t
          LEFT JOIN posts p ON p.topic_id = t.id AND p.deleted = false
@@ -729,10 +729,10 @@ pub async fn get_active_topics(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    Ok(topics)
+    Ok(boards)
 }
 
-pub async fn get_feed_nibs(
+pub async fn get_feed_posts(
     pool: &Pool<Postgres>,
     sort: &str,
     _app_env: &config::app_envs::AppEnvs,
@@ -808,7 +808,7 @@ pub async fn get_feed_nibs(
         .map_err(map_sqlx_error::<PostError>)?,
     };
 
-    let nibs = rows.into_iter().map(|row| {
+    let posts = rows.into_iter().map(|row| {
         PostData {
             title: row.title,
             slug: row.slug,
@@ -827,14 +827,14 @@ pub async fn get_feed_nibs(
         }
     }).collect();
 
-    Ok(nibs)
+    Ok(posts)
 }
 
-pub async fn get_user_nibs(
+pub async fn get_user_posts(
     pool: &Pool<Postgres>,
     user_id: i64,
 ) -> Result<Vec<PostData>, PostError> {
-    let mut nibs: Vec<PostData> = sqlx::query_as(
+    let mut posts: Vec<PostData> = sqlx::query_as(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                 NULL::TEXT as anon_token,
@@ -859,20 +859,20 @@ pub async fn get_user_nibs(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    for nib in &mut nibs {
-        nib.is_hot = nib.vote_count > 10 || nib.view_count > 100;
-        let board = nib.board_id.as_deref().unwrap_or("");
-        nib.anon_token = Some(compute_anon_token(user_id, board, &nib.slug));
+    for post in &mut posts {
+        post.is_hot = post.vote_count > 10 || post.view_count > 100;
+        let board = post.board_id.as_deref().unwrap_or("");
+        post.anon_token = Some(compute_anon_token(user_id, board, &post.slug));
     }
 
-    Ok(nibs)
+    Ok(posts)
 }
 
 pub async fn get_user_content_stats(
     pool: &Pool<Postgres>,
     user_id: i64,
 ) -> Result<InternalUserStats, PostError> {
-    let nib_count: i64 = sqlx::query_scalar(
+    let post_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::BIGINT FROM posts WHERE creator_id = $1 AND deleted = false",
     )
     .bind(user_id)
@@ -881,7 +881,7 @@ pub async fn get_user_content_stats(
     .map_err(map_sqlx_error::<PostError>)?
     .unwrap_or(0);
 
-    let squeak_count: i64 = sqlx::query_scalar(
+    let comment_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::BIGINT FROM comments WHERE sender_id = $1 AND deleted = false",
     )
     .bind(user_id)
@@ -915,8 +915,8 @@ pub async fn get_user_content_stats(
     .unwrap_or(0);
 
     Ok(InternalUserStats {
-        nib_count,
-        squeak_count,
+        post_count,
+        comment_count,
         upvote_count: post_upvotes + comment_upvotes,
     })
 }

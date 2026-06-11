@@ -19,6 +19,6 @@ pub async fn get_feed(
     State(app): State<AppData>,
     Query(query): Query<FeedQuery>,
 ) -> Result<Json<Vec<service::PostData>>, PostError> {
-    let nibs = service::get_feed_nibs(&app.pool, &query.sort, &app.config.app_env).await?;
-    Ok(Json(nibs))
+    let posts = service::get_feed_posts(&app.pool, &query.sort, &app.config.app_env).await?;
+    Ok(Json(posts))
 }

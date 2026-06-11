@@ -8,15 +8,15 @@ use custom_headers::user_id::UserId;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub struct TopicBody {
+pub struct BoardBody {
     name: String,
     description: String,
 }
 
-pub async fn create_topic(
+pub async fn create_board(
     State(app): State<AppData>,
     _user_id: UserId,
-    Json(body): Json<TopicBody>,
+    Json(body): Json<BoardBody>,
 ) -> Result<StatusCode, PostError> {
     if !body
         .name
@@ -26,24 +26,24 @@ pub async fn create_topic(
         return Err(PostError::InvalidTopicName);
     }
 
-    service::create_topic(&app.pool, &body.name, &body.description).await?;
+    service::create_board(&app.pool, &body.name, &body.description).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn get_all_topics(
+pub async fn get_all_boards(
     State(app): State<AppData>,
-) -> Result<Json<Vec<service::TopicData>>, PostError> {
-    let topics = service::get_all_topics(&app.pool).await?;
-    Ok(Json(topics))
+) -> Result<Json<Vec<service::BoardData>>, PostError> {
+    let boards = service::get_all_boards(&app.pool).await?;
+    Ok(Json(boards))
 }
 
-pub async fn get_topic(
+pub async fn get_board(
     State(app): State<AppData>,
     Path(topic_name): Path<String>,
-) -> Result<Json<service::TopicData>, PostError> {
-    let topic = service::get_topic(&app.pool, &topic_name).await?;
-    Ok(Json(topic))
+) -> Result<Json<service::BoardData>, PostError> {
+    let board = service::get_board(&app.pool, &topic_name).await?;
+    Ok(Json(board))
 }
 
 #[derive(Deserialize)]
@@ -56,19 +56,19 @@ fn default_active_limit() -> i64 {
     8
 }
 
-pub async fn get_active_topics(
+pub async fn get_active_boards(
     State(app): State<AppData>,
     Query(query): Query<ActiveQuery>,
 ) -> Result<Json<Vec<service::BoardSummary>>, PostError> {
     let limit = query.limit.min(50);
-    let topics = service::get_active_topics(&app.pool, limit).await?;
-    Ok(Json(topics))
+    let boards = service::get_active_boards(&app.pool, limit).await?;
+    Ok(Json(boards))
 }
 
-pub async fn get_topic_tags(
+pub async fn get_board_tags(
     State(app): State<AppData>,
     Path(topic_name): Path<String>,
 ) -> Result<Json<Vec<String>>, PostError> {
-    let tags = service::get_topic_tags(&app.pool, &topic_name).await?;
+    let tags = service::get_board_tags(&app.pool, &topic_name).await?;
     Ok(Json(tags))
 }
