@@ -69,6 +69,25 @@ pub struct BoardSummary {
     pub post_count: i64,
 }
 
+#[derive(FromRow)]
+struct CommentRow {
+    hash: String,
+    content: String,
+    created_at: DateTime<Utc>,
+    deleted: bool,
+    vote_count: i64,
+    sender_id: i64,
+}
+
+#[derive(FromRow)]
+struct ReplyRow {
+    hash: String,
+    content: String,
+    created_at: DateTime<Utc>,
+    deleted: bool,
+    sender_id: i64,
+}
+
 #[derive(FromRow, Serialize)]
 pub struct PostData {
     pub title: String,
@@ -319,11 +338,10 @@ pub async fn get_all_comments(
 ) -> Result<Vec<CommentData>, PostError> {
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
-    let comments: Vec<CommentData> = sqlx::query_as(
+    let rows: Vec<CommentRow> = sqlx::query_as(
         "SELECT c.hash, c.content, c.created_at, c.deleted,
                 COALESCE(cv.vote_count, 0)::BIGINT as vote_count,
-                NULL::TEXT as anon_token,
-                NULL::BOOL as is_mine
+                c.sender_id
          FROM comments c
          LEFT JOIN LATERAL (
              SELECT COALESCE(SUM(direction), 0) as vote_count
@@ -338,25 +356,27 @@ pub async fn get_all_comments(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let mut result = Vec::new();
-    for mut comment in comments {
-        if let Some(uid) = maybe_user_id {
-            let sender_id: Option<i64> =
-                sqlx::query_scalar("SELECT sender_id FROM comments WHERE hash = $1")
-                    .bind(&comment.hash)
-                    .fetch_optional(pool)
-                    .await
-                    .map_err(map_sqlx_error::<PostError>)?
-                    .flatten();
+    let result = rows.into_iter().map(|row| {
+        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+            let mine = row.sender_id == uid;
+            (
+                Some(mine),
+                Some(compute_squeak_anon_token(uid, row.sender_id, topic_name, post_b62_or_slug)),
+            )
+        } else {
+            (None, None)
+        };
 
-            if let Some(sid) = sender_id {
-                comment.is_mine = Some(sid == uid);
-                comment.anon_token =
-                    Some(compute_squeak_anon_token(uid, topic_name, post_b62_or_slug));
-            }
+        CommentData {
+            hash: row.hash,
+            content: row.content,
+            created_at: row.created_at,
+            deleted: row.deleted,
+            vote_count: row.vote_count,
+            anon_token,
+            is_mine,
         }
-        result.push(comment);
-    }
+    }).collect();
 
     Ok(result)
 }
@@ -398,14 +418,15 @@ pub async fn create_reply(
 
 pub async fn get_replies(
     pool: &Pool<Postgres>,
-    _topic_name: &str,
+    topic_name: &str,
     post_b62_or_slug: &str,
     comment_hash: &str,
+    maybe_user_id: Option<i64>,
 ) -> Result<Vec<ReplyData>, PostError> {
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
-    let replies: Vec<ReplyData> = sqlx::query_as(
-        "SELECT r.hash, r.content, r.created_at, r.deleted
+    let rows: Vec<ReplyRow> = sqlx::query_as(
+        "SELECT r.hash, r.content, r.created_at, r.deleted, r.sender_id
          FROM replies r
          JOIN comments c ON c.id = r.comment_id
          WHERE r.post_id = $1 AND c.hash = $2
@@ -417,7 +438,29 @@ pub async fn get_replies(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    Ok(replies)
+    let result = rows.into_iter().map(|row| {
+        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+            let mine = row.sender_id == uid;
+            (
+                Some(mine),
+                Some(compute_squeak_anon_token(uid, row.sender_id, topic_name, post_b62_or_slug)),
+            )
+        } else {
+            (None, None)
+        };
+
+        ReplyData {
+            hash: row.hash,
+            content: row.content,
+            created_at: row.created_at,
+            deleted: row.deleted,
+            vote_count: 0,
+            anon_token,
+            is_mine,
+        }
+    }).collect();
+
+    Ok(result)
 }
 
 #[derive(Serialize)]
@@ -439,10 +482,10 @@ fn compute_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String
     hex::encode(&hash[..8])
 }
 
-fn compute_squeak_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String {
+fn compute_squeak_anon_token(viewer_id: i64, sender_id: i64, board_name: &str, post_slug: &str) -> String {
     use sha2::{Digest, Sha256};
     let salt = get_anon_salt();
-    let input = format!("sqk:{}:{}:{}:{}", user_id, board_name, post_slug, salt);
+    let input = format!("sqk:{}:{}:{}:{}:{}", viewer_id, sender_id, board_name, post_slug, salt);
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..8])
 }
