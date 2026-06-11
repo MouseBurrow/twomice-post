@@ -6,6 +6,9 @@ use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
 use std::sync::OnceLock;
 
+const MAX_TITLE_LEN: usize = 200;
+const MAX_CONTENT_LEN: usize = 50000;
+
 async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Result<i64, PostError> {
     if let Some(id) = utils::decode_b62(post_b62_or_slug) {
         return Ok(id);
@@ -143,6 +146,10 @@ pub async fn create_post(
     content: &str,
     image_url: &Option<String>,
 ) -> Result<String, PostError> {
+    if title.len() > MAX_TITLE_LEN || content.len() > MAX_CONTENT_LEN {
+        return Err(PostError::ContentTooLong);
+    }
+
     let topic_id: i64 = sqlx::query_scalar("SELECT id FROM topics WHERE name = $1")
         .bind(topic_name)
         .fetch_optional(pool)
@@ -341,6 +348,10 @@ pub async fn create_comment(
     post_b62_or_slug: &str,
     content: &str,
 ) -> Result<(), PostError> {
+    if content.len() > MAX_CONTENT_LEN {
+        return Err(PostError::ContentTooLong);
+    }
+
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
     insert_retry_on_duplicate::<PostError, _, _>(|| async {
@@ -419,6 +430,10 @@ pub async fn create_reply(
     comment_hash: &str,
     content: &str,
 ) -> Result<(), PostError> {
+    if content.len() > MAX_CONTENT_LEN {
+        return Err(PostError::ContentTooLong);
+    }
+
     let comment_id: i64 = sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
         .bind(comment_hash)
         .fetch_optional(pool)

@@ -36,6 +36,11 @@ define_errors!(
             code: "P0005",
             status: BAD_REQUEST,
             message: "Vote direction must be -1, 0, or 1"
+        },
+        ContentTooLong => {
+            code: "P0007",
+            status: BAD_REQUEST,
+            message: "Content exceeds maximum allowed length"
         }
     }
 );
