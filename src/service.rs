@@ -192,14 +192,17 @@ pub async fn create_post(
     Ok(slug)
 }
 
-async fn validate_tags(pool: &Pool<Postgres>, topic_id: i64, tags: &[String]) -> Result<(), PostError> {
-    let allowed: Vec<String> = sqlx::query_scalar(
-        "SELECT tag_name FROM topic_tags WHERE topic_id = $1",
-    )
-    .bind(topic_id)
-    .fetch_all(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
+async fn validate_tags(
+    pool: &Pool<Postgres>,
+    topic_id: i64,
+    tags: &[String],
+) -> Result<(), PostError> {
+    let allowed: Vec<String> =
+        sqlx::query_scalar("SELECT tag_name FROM topic_tags WHERE topic_id = $1")
+            .bind(topic_id)
+            .fetch_all(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?;
 
     if allowed.is_empty() {
         return Ok(());
@@ -225,13 +228,12 @@ pub async fn get_board_tags(
         .map_err(map_sqlx_error::<PostError>)?
         .ok_or(PostError::TopicNotFound)?;
 
-    let tags: Vec<String> = sqlx::query_scalar(
-        "SELECT tag_name FROM topic_tags WHERE topic_id = $1 ORDER BY tag_name",
-    )
-    .bind(topic_id)
-    .fetch_all(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
+    let tags: Vec<String> =
+        sqlx::query_scalar("SELECT tag_name FROM topic_tags WHERE topic_id = $1 ORDER BY tag_name")
+            .bind(topic_id)
+            .fetch_all(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?;
 
     Ok(tags)
 }
@@ -337,42 +339,45 @@ pub async fn get_all_posts(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let result = rows.into_iter().map(|row| {
-        let is_hot = row.vote_count > 10 || row.view_count > 100;
+    let result = rows
+        .into_iter()
+        .map(|row| {
+            let is_hot = row.vote_count > 10 || row.view_count > 100;
 
-        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
-            if let Some(cid) = row.creator_id {
-                let mine = cid == uid;
-                let token = if mine {
-                    Some(compute_anon_token(uid, topic_name, &row.slug))
+            let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+                if let Some(cid) = row.creator_id {
+                    let mine = cid == uid;
+                    let token = if mine {
+                        Some(compute_anon_token(uid, topic_name, &row.slug))
+                    } else {
+                        None
+                    };
+                    (Some(mine), token)
                 } else {
-                    None
-                };
-                (Some(mine), token)
+                    (None, None)
+                }
             } else {
                 (None, None)
-            }
-        } else {
-            (None, None)
-        };
+            };
 
-        PostData {
-            title: row.title,
-            slug: row.slug,
-            content: row.content,
-            image_url: row.image_url,
-            created_at: row.created_at,
-            deleted: row.deleted,
-            vote_count: row.vote_count,
-            anon_token,
-            is_mine,
-            tags: row.tags,
-            reply_count: row.reply_count,
-            view_count: row.view_count,
-            is_hot,
-            board_id: row.board_id,
-        }
-    }).collect();
+            PostData {
+                title: row.title,
+                slug: row.slug,
+                content: row.content,
+                image_url: row.image_url,
+                created_at: row.created_at,
+                deleted: row.deleted,
+                vote_count: row.vote_count,
+                anon_token,
+                is_mine,
+                tags: row.tags,
+                reply_count: row.reply_count,
+                view_count: row.view_count,
+                is_hot,
+                board_id: row.board_id,
+            }
+        })
+        .collect();
 
     Ok(result)
 }
@@ -451,27 +456,35 @@ pub async fn get_all_comments(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let result = rows.into_iter().map(|row| {
-        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
-            let mine = row.sender_id == uid;
-            (
-                Some(mine),
-                Some(compute_squeak_anon_token(uid, row.sender_id, topic_name, post_b62_or_slug)),
-            )
-        } else {
-            (None, None)
-        };
+    let result = rows
+        .into_iter()
+        .map(|row| {
+            let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+                let mine = row.sender_id == uid;
+                (
+                    Some(mine),
+                    Some(compute_squeak_anon_token(
+                        uid,
+                        row.sender_id,
+                        topic_name,
+                        post_b62_or_slug,
+                    )),
+                )
+            } else {
+                (None, None)
+            };
 
-        CommentData {
-            hash: row.hash,
-            content: row.content,
-            created_at: row.created_at,
-            deleted: row.deleted,
-            vote_count: row.vote_count,
-            anon_token,
-            is_mine,
-        }
-    }).collect();
+            CommentData {
+                hash: row.hash,
+                content: row.content,
+                created_at: row.created_at,
+                deleted: row.deleted,
+                vote_count: row.vote_count,
+                anon_token,
+                is_mine,
+            }
+        })
+        .collect();
 
     Ok(result)
 }
@@ -556,27 +569,35 @@ pub async fn get_replies(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let result = rows.into_iter().map(|row| {
-        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
-            let mine = row.sender_id == uid;
-            (
-                Some(mine),
-                Some(compute_squeak_anon_token(uid, row.sender_id, topic_name, post_b62_or_slug)),
-            )
-        } else {
-            (None, None)
-        };
+    let result = rows
+        .into_iter()
+        .map(|row| {
+            let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+                let mine = row.sender_id == uid;
+                (
+                    Some(mine),
+                    Some(compute_squeak_anon_token(
+                        uid,
+                        row.sender_id,
+                        topic_name,
+                        post_b62_or_slug,
+                    )),
+                )
+            } else {
+                (None, None)
+            };
 
-        ReplyData {
-            hash: row.hash,
-            content: row.content,
-            created_at: row.created_at,
-            deleted: row.deleted,
-            vote_count: 0,
-            anon_token,
-            is_mine,
-        }
-    }).collect();
+            ReplyData {
+                hash: row.hash,
+                content: row.content,
+                created_at: row.created_at,
+                deleted: row.deleted,
+                vote_count: 0,
+                anon_token,
+                is_mine,
+            }
+        })
+        .collect();
 
     Ok(result)
 }
@@ -590,11 +611,7 @@ pub struct InternalUserStats {
 
 fn get_anon_salt() -> &'static str {
     static SALT: OnceLock<String> = OnceLock::new();
-    SALT.get_or_init(|| {
-        std::env::var("ANON_SALT").unwrap_or_else(|_| {
-            utils::random_b62(32)
-        })
-    })
+    SALT.get_or_init(|| std::env::var("ANON_SALT").unwrap_or_else(|_| utils::random_b62(32)))
 }
 
 fn compute_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String {
@@ -605,10 +622,18 @@ fn compute_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String
     hex::encode(&hash[..8])
 }
 
-fn compute_squeak_anon_token(viewer_id: i64, sender_id: i64, board_name: &str, post_slug: &str) -> String {
+fn compute_squeak_anon_token(
+    viewer_id: i64,
+    sender_id: i64,
+    board_name: &str,
+    post_slug: &str,
+) -> String {
     use sha2::{Digest, Sha256};
     let salt = get_anon_salt();
-    let input = format!("sqk:{}:{}:{}:{}:{}", viewer_id, sender_id, board_name, post_slug, salt);
+    let input = format!(
+        "sqk:{}:{}:{}:{}:{}",
+        viewer_id, sender_id, board_name, post_slug, salt
+    );
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..8])
 }
@@ -808,8 +833,9 @@ pub async fn get_feed_posts(
         .map_err(map_sqlx_error::<PostError>)?,
     };
 
-    let posts = rows.into_iter().map(|row| {
-        PostData {
+    let posts = rows
+        .into_iter()
+        .map(|row| PostData {
             title: row.title,
             slug: row.slug,
             content: row.content,
@@ -824,8 +850,8 @@ pub async fn get_feed_posts(
             view_count: row.view_count,
             is_hot: row.vote_count > 10 || row.view_count > 100,
             board_id: row.board_id,
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(posts)
 }
@@ -957,7 +983,10 @@ mod tests {
     fn anon_token_is_16_hex_chars() {
         let token = compute_anon_token(42, "board", "slug123");
         assert_eq!(token.len(), 16);
-        assert!(token.chars().all(|c| c.is_ascii_hexdigit()), "token must be hex");
+        assert!(
+            token.chars().all(|c| c.is_ascii_hexdigit()),
+            "token must be hex"
+        );
     }
 
     #[test]
@@ -971,21 +1000,30 @@ mod tests {
     fn squeak_anon_token_differs_per_sender() {
         let a = compute_squeak_anon_token(1, 5, "general", "abc123");
         let b = compute_squeak_anon_token(1, 99, "general", "abc123");
-        assert_ne!(a, b, "different commenters on the same post must get different tokens per viewer");
+        assert_ne!(
+            a, b,
+            "different commenters on the same post must get different tokens per viewer"
+        );
     }
 
     #[test]
     fn squeak_anon_token_differs_per_viewer() {
         let a = compute_squeak_anon_token(1, 5, "general", "abc123");
         let b = compute_squeak_anon_token(2, 5, "general", "abc123");
-        assert_ne!(a, b, "different viewers must see different tokens for the same commenter");
+        assert_ne!(
+            a, b,
+            "different viewers must see different tokens for the same commenter"
+        );
     }
 
     #[test]
     fn squeak_anon_token_differs_per_board() {
         let a = compute_squeak_anon_token(1, 5, "general", "abc123");
         let b = compute_squeak_anon_token(1, 5, "random", "abc123");
-        assert_ne!(a, b, "different boards must produce different squeak tokens");
+        assert_ne!(
+            a, b,
+            "different boards must produce different squeak tokens"
+        );
     }
 
     #[test]
@@ -1002,23 +1040,38 @@ mod tests {
     fn squeak_anon_token_is_16_hex_chars() {
         let token = compute_squeak_anon_token(42, 7, "board", "slug123");
         assert_eq!(token.len(), 16);
-        assert!(token.chars().all(|c| c.is_ascii_hexdigit()), "token must be hex");
+        assert!(
+            token.chars().all(|c| c.is_ascii_hexdigit()),
+            "token must be hex"
+        );
     }
 
     #[test]
     fn anon_salt_is_consistent() {
         let a = get_anon_salt();
         let b = get_anon_salt();
-        assert_eq!(a, b, "salt must be consistent within the same process lifetime");
+        assert_eq!(
+            a, b,
+            "salt must be consistent within the same process lifetime"
+        );
         assert!(!a.is_empty(), "salt must not be empty");
         assert_eq!(a.len(), 32, "default random salt must be 32 chars");
     }
 
     #[test]
     fn constants_are_sane() {
-        assert!(MAX_TITLE_LEN > 0 && MAX_TITLE_LEN <= 1000, "MAX_TITLE_LEN out of range");
-        assert!(MAX_CONTENT_LEN >= MAX_TITLE_LEN, "MAX_CONTENT_LEN must be >= MAX_TITLE_LEN");
-        assert!(MAX_TAGS_PER_POST > 0 && MAX_TAGS_PER_POST <= 20, "MAX_TAGS_PER_POST out of range");
+        assert!(
+            MAX_TITLE_LEN > 0 && MAX_TITLE_LEN <= 1000,
+            "MAX_TITLE_LEN out of range"
+        );
+        assert!(
+            MAX_CONTENT_LEN >= MAX_TITLE_LEN,
+            "MAX_CONTENT_LEN must be >= MAX_TITLE_LEN"
+        );
+        assert!(
+            MAX_TAGS_PER_POST > 0 && MAX_TAGS_PER_POST <= 20,
+            "MAX_TAGS_PER_POST out of range"
+        );
     }
 
     #[test]

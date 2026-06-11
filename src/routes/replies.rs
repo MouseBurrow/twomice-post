@@ -34,6 +34,13 @@ pub async fn get_replies(
     Path((topic_name, post_slug, comment_hash)): Path<(String, String, String)>,
     OptionalUserId(maybe_user_id): OptionalUserId,
 ) -> Result<Json<Vec<service::ReplyData>>, PostError> {
-    let replies = service::get_replies(&app.pool, &topic_name, &post_slug, &comment_hash, maybe_user_id).await?;
+    let replies = service::get_replies(
+        &app.pool,
+        &topic_name,
+        &post_slug,
+        &comment_hash,
+        maybe_user_id,
+    )
+    .await?;
     Ok(Json(replies))
 }
