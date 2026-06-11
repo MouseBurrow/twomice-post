@@ -64,3 +64,11 @@ pub async fn get_active_topics(
     let topics = service::get_active_topics(&app.pool, limit).await?;
     Ok(Json(topics))
 }
+
+pub async fn get_topic_tags(
+    State(app): State<AppData>,
+    Path(topic_name): Path<String>,
+) -> Result<Json<Vec<String>>, PostError> {
+    let tags = service::get_topic_tags(&app.pool, &topic_name).await?;
+    Ok(Json(tags))
+}

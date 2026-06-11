@@ -41,6 +41,16 @@ define_errors!(
             code: "P0007",
             status: BAD_REQUEST,
             message: "Content exceeds maximum allowed length"
+        },
+        InvalidTags => {
+            code: "P0006",
+            status: UNPROCESSABLE_ENTITY,
+            message: "One or more tags are not allowed for this board"
+        },
+        TagNotFound => {
+            code: "P0008",
+            status: NOT_FOUND,
+            message: "Tag not found"
         }
     }
 );

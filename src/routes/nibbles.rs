@@ -13,6 +13,7 @@ pub struct PostBody {
     title: String,
     content: String,
     image_url: Option<String>,
+    tags: Option<Vec<String>>,
 }
 
 pub async fn create_post(
@@ -28,6 +29,7 @@ pub async fn create_post(
         &body.title,
         &body.content,
         &body.image_url,
+        &body.tags,
     )
     .await?;
 
