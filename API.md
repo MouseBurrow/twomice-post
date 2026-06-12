@@ -216,19 +216,32 @@ Response `200`:
 
 When `X-User-Id` is provided, each comment includes `is_mine` and `anon_token`.
 
+Query params:
+
+| Param | Type | Default | Max | Description |
+|---|---|---|---|---|
+| `limit` | integer | 25 | 100 | Number of comments to return |
+| `offset` | integer | 0 | — | Pagination offset |
+| `sort` | string | `"hot"` | — | Sort order: `hot`, `new`, `top` |
+
 Response `200`:
 ```json
-[
-  {
-    "hash": "aB3x9",
-    "content": "Great post!",
-    "created_at": "2026-06-11T12:30:00Z",
-    "deleted": false,
-    "vote_count": 3,
-    "anon_token": "a1b2c3d4e5f6g7h8",
-    "is_mine": true
-  }
-]
+{
+  "data": [
+    {
+      "hash": "aB3x9",
+      "content": "Great post!",
+      "created_at": "2026-06-11T12:30:00Z",
+      "deleted": false,
+      "vote_count": 3,
+      "anon_token": "a1b2c3d4e5f6g7h8",
+      "is_mine": true
+    }
+  ],
+  "total": 42,
+  "limit": 25,
+  "offset": 0
+}
 ```
 
 | Field | Type | Description |
