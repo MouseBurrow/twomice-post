@@ -6,11 +6,11 @@ use sqlx::{Pool, Postgres};
 
 /// Get a connection pool to a test Postgres database.
 ///
-/// Priority:
-/// 1. `POST_DATABASE_URL` env var — connect directly (assumes already migrated)
+/// 1. `POST_DATABASE_URL` env var — connect to that database, run migrations
 /// 2. No env var — start a Docker container, run migrations, connect
 pub async fn get_db_pool() -> Pool<Postgres> {
     if let Ok(url) = std::env::var("POST_DATABASE_URL") {
+        run_migrations_psql(&url);
         return PgPoolOptions::new()
             .max_connections(2)
             .connect(&url)
@@ -31,26 +31,27 @@ fn migrations_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations")
 }
 
-/// Run all `.up.sql` migrations via `docker exec`.
-/// Expects the container to already have Postgres ready.
-fn run_migrations_docker(container: &str) {
-    let dir = migrations_dir();
-    let mut entries: Vec<_> = std::fs::read_dir(&dir)
-        .expect("migrations directory not found")
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql")
-        })
-        .collect();
-    entries.sort();
+/// Run all `.up.sql` migrations via `psql` with a connection URL.
+fn run_migrations_psql(url: &str) {
+    run_migrations(|sql| {
+        let mut child = Command::new("psql")
+            .arg(url)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("psql must be installed");
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(sql.as_bytes()).ok();
+        child.wait().ok();
+    });
+}
 
-    for path in &entries {
-        let sql = std::fs::read_to_string(path).expect("failed to read migration file");
+/// Run all `.up.sql` migrations via `docker exec`.
+fn run_migrations_docker(container: &str) {
+    run_migrations(|sql| {
         let mut child = Command::new("docker")
-            .args([
-                "exec", "-i", container, "psql", "-U", "twomice", "-d", "post",
-            ])
+            .args(["exec", "-i", container, "psql", "-U", "twomice", "-d", "post"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -59,6 +60,22 @@ fn run_migrations_docker(container: &str) {
         use std::io::Write;
         child.stdin.take().unwrap().write_all(sql.as_bytes()).ok();
         child.wait().ok();
+    });
+}
+
+/// Read all `.up.sql` migration files and run them through the provided executor.
+fn run_migrations(mut exec: impl FnMut(&str)) {
+    let dir = migrations_dir();
+    let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        .expect("migrations directory not found")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql"))
+        .collect();
+    entries.sort();
+    for path in &entries {
+        let sql = std::fs::read_to_string(path).expect("failed to read migration file");
+        exec(&sql);
     }
 }
 
