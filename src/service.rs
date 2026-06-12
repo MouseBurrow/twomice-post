@@ -1,6 +1,7 @@
 use crate::errors::PostError;
 use chrono::{DateTime, Utc};
 use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
+use log::info;
 use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
@@ -198,6 +199,7 @@ pub async fn create_post(
         .await
         .map_err(map_sqlx_error::<PostError>)?;
 
+    info!(target: "post", "post created creator_id={} slug={}", creator_id, slug);
     Ok(slug)
 }
 
@@ -455,7 +457,8 @@ pub async fn create_comment(
         .bind(post_id)
         .bind(content)
         .execute(pool)
-        .await?;
+         .await?;
+        info!(target: "post", "comment created sender_id={} post_id={} hash={}", sender_id, post_id, hash);
         Ok(())
     })
     .await
@@ -613,9 +616,10 @@ pub async fn create_reply(
         .bind(post_id)
         .bind(comment_id)
         .bind(reply_id)
-        .bind(content)
-        .execute(pool)
-        .await?;
+         .bind(content)
+         .execute(pool)
+         .await?;
+        info!(target: "post", "reply created sender_id={} post_id={} comment_id={} hash={}", sender_id, post_id, comment_id, hash);
         Ok(())
     })
     .await
@@ -880,6 +884,7 @@ pub async fn cast_post_vote(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
+    info!(target: "post", "post vote cast user_id={} post_id={} direction={} count={}", user_id, post_id, direction, count);
     Ok(count)
 }
 
@@ -919,6 +924,7 @@ pub async fn cast_comment_vote(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
+    info!(target: "post", "comment vote cast user_id={} comment_id={} direction={} count={}", user_id, comment_id, direction, count);
     Ok(count)
 }
 
@@ -958,6 +964,7 @@ pub async fn cast_reply_vote(
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
+    info!(target: "post", "reply vote cast user_id={} reply_id={} direction={} count={}", user_id, reply_id, direction, count);
     Ok(count)
 }
 
