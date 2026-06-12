@@ -1120,13 +1120,13 @@ dependencies = [
  "easy_errors",
  "hex",
  "http",
- "log",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
  "tokio",
+ "tracing",
  "utils",
 ]
 

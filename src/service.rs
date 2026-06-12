@@ -1,8 +1,8 @@
 use crate::errors::PostError;
 use chrono::{DateTime, Utc};
 use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
-use log::info;
 use serde::Serialize;
+use tracing::info;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
