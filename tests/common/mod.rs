@@ -6,16 +6,15 @@ use sqlx::{Pool, Postgres};
 
 /// Get a connection pool to a test Postgres database.
 ///
-/// 1. `POST_DATABASE_URL` env var — connect to that database, run migrations
+/// 1. `POST_DATABASE_URL` env var — try to connect; if DNS fails, try
+///    common alternative hostnames (postgres, localhost, 127.0.0.1)
 /// 2. No env var — start a Docker container, run migrations, connect
 pub async fn get_db_pool() -> Pool<Postgres> {
     if let Ok(url) = std::env::var("POST_DATABASE_URL") {
-        run_migrations_psql(&url);
-        return PgPoolOptions::new()
-            .max_connections(2)
-            .connect(&url)
+        let pool = try_connect_with_fallback(&url)
             .await
             .unwrap_or_else(|e| panic!("Cannot connect to POST_DATABASE_URL={url}: {e}"));
+        return pool;
     }
 
     let url = start_docker_postgres().await;
@@ -24,6 +23,40 @@ pub async fn get_db_pool() -> Pool<Postgres> {
         .connect(&url)
         .await
         .expect("failed to connect to test database after Docker setup")
+}
+
+/// Try connecting to the given URL. If it fails with a DNS error,
+/// re-try with common alternative hostnames (localhost, 127.0.0.1).
+async fn try_connect_with_fallback(url: &str) -> Result<Pool<Postgres>, sqlx::Error> {
+    let result = PgPoolOptions::new().max_connections(2).connect(url).await;
+    if result.is_ok() {
+        run_migrations_psql(url);
+        return result;
+    }
+
+    // DNS failure — try alternative hostnames by replacing the host part
+    let current_host = url
+        .split('@')
+        .nth(1)
+        .and_then(|s| s.split(':').next())
+        .unwrap_or("");
+    let alternatives = ["localhost", "127.0.0.1"];
+    for host in &alternatives {
+        if *host == current_host {
+            continue;
+        }
+        let alt_url = url.replace(current_host, host);
+        let result = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&alt_url)
+            .await;
+        if result.is_ok() {
+            run_migrations_psql(&alt_url);
+            return result;
+        }
+    }
+
+    result
 }
 
 /// Path to the migration files, relative to the crate root.
@@ -51,7 +84,9 @@ fn run_migrations_psql(url: &str) {
 fn run_migrations_docker(container: &str) {
     run_migrations(|sql| {
         let mut child = Command::new("docker")
-            .args(["exec", "-i", container, "psql", "-U", "twomice", "-d", "post"])
+            .args([
+                "exec", "-i", container, "psql", "-U", "twomice", "-d", "post",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -70,7 +105,9 @@ fn run_migrations(mut exec: impl FnMut(&str)) {
         .expect("migrations directory not found")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql"))
+        .filter(|p| {
+            p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql")
+        })
         .collect();
     entries.sort();
     for path in &entries {
