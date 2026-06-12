@@ -157,15 +157,20 @@ async fn start_docker_postgres() -> String {
     "postgresql://twomice:twomice@127.0.0.1:5432/post".to_string()
 }
 
-/// Try to connect to an existing Postgres on localhost:5432.
+/// Try to connect to an existing Postgres on common hostnames.
 async fn try_connect_existing() -> Option<String> {
-    let url = "postgresql://twomice:twomice@127.0.0.1:5432/post".to_string();
-    PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .ok()?;
-    Some(url)
+    for host in &["127.0.0.1:5432", "localhost:5432", "postgres:5432"] {
+        let url = format!("postgresql://twomice:twomice@{host}/post");
+        if PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .is_ok()
+        {
+            return Some(url);
+        }
+    }
+    None
 }
 
 /// Delete all data from all tables (safe ordering for FK constraints).
