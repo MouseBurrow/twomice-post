@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Helper script: runs tests with a dedicated Postgres database.
-# If POST_DATABASE_URL is already set, uses that.
-# Otherwise, the Rust test code will start a Docker container automatically.
+# Tests run sequentially to avoid DB race conditions.
 #
-# Usage: ./run_tests.sh [cargo test flags]
+# Usage: ./run_tests.sh
 set -euo pipefail
 
 # Only set up if not already configured
@@ -20,12 +19,10 @@ if [ -z "${POST_DATABASE_URL:-}" ]; then
   # Check if the Postgres server is reachable
   if PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1" >/dev/null 2>&1; then
     echo "Setting up test database '${TEST_DB}'..."
-    # Drop and recreate
     PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres <<SQL
 DROP DATABASE IF EXISTS ${TEST_DB};
 CREATE DATABASE ${TEST_DB} OWNER ${DB_USER};
 SQL
-    # Run migrations
     echo "Running migrations..."
     for f in "$MIGRATIONS_DIR"/*.up.sql; do
       echo "  $(basename "$f")"
@@ -39,4 +36,16 @@ SQL
   fi
 fi
 
-cargo test "$@"
+# Run each test target sequentially (avoids DB race conditions between binaries)
+EXIT_CODE=0
+for target in lib api_comments api_posts api_replies api_votes; do
+  echo ""
+  echo "=== $target ==="
+  if [ "$target" = "lib" ]; then
+    cargo test --lib -- --test-threads=1 2>&1 || EXIT_CODE=$?
+  else
+    cargo test --test "$target" -- --test-threads=1 2>&1 || EXIT_CODE=$?
+  fi
+done
+
+exit $EXIT_CODE
