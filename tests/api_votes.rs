@@ -39,9 +39,15 @@ async fn post_vote_multiple_users() {
         .await
         .expect("resolve post");
 
-    service::cast_post_vote(&pool, 301, post_id, 1).await.unwrap();
-    service::cast_post_vote(&pool, 302, post_id, 1).await.unwrap();
-    service::cast_post_vote(&pool, 303, post_id, -1).await.unwrap();
+    service::cast_post_vote(&pool, 301, post_id, 1)
+        .await
+        .unwrap();
+    service::cast_post_vote(&pool, 302, post_id, 1)
+        .await
+        .unwrap();
+    service::cast_post_vote(&pool, 303, post_id, -1)
+        .await
+        .unwrap();
 
     let post = service::get_post(&pool, &post_slug, None)
         .await
@@ -58,9 +64,15 @@ async fn comment_vote_consistency() {
         .await
         .expect("resolve comment");
 
-    service::cast_comment_vote(&pool, 400, comment_id, 1).await.unwrap();
-    service::cast_comment_vote(&pool, 401, comment_id, 1).await.unwrap();
-    service::cast_comment_vote(&pool, 402, comment_id, -1).await.unwrap();
+    service::cast_comment_vote(&pool, 400, comment_id, 1)
+        .await
+        .unwrap();
+    service::cast_comment_vote(&pool, 401, comment_id, 1)
+        .await
+        .unwrap();
+    service::cast_comment_vote(&pool, 402, comment_id, -1)
+        .await
+        .unwrap();
 
     let result = service::get_all_comments(&pool, &topic, &post_slug, None, 25, 0, "hot")
         .await

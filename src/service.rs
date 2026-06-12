@@ -2,11 +2,11 @@ use crate::errors::PostError;
 use chrono::{DateTime, Utc};
 use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use serde::Serialize;
-use tracing::info;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use tracing::info;
 use utils::PaginatedResponse;
 
 const MAX_TITLE_LEN: usize = 200;
@@ -475,12 +475,11 @@ pub async fn get_all_comments(
 ) -> Result<PaginatedResponse<CommentData>, PostError> {
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
-    let total: i64 =
-        sqlx::query_scalar("SELECT COUNT(*)::BIGINT FROM comments WHERE post_id = $1")
-            .bind(post_id)
-            .fetch_one(pool)
-            .await
-            .map_err(map_sqlx_error::<PostError>)?;
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*)::BIGINT FROM comments WHERE post_id = $1")
+        .bind(post_id)
+        .fetch_one(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
 
     let order = match sort {
         "new" => "new",

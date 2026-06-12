@@ -8,9 +8,17 @@ async fn create_and_get_replies() {
     let (topic, post_slug, comment_hash) = common::seed_minimal(&pool).await;
 
     // Create a top-level reply
-    service::create_reply(&pool, 102, &topic, &post_slug, &comment_hash, "First reply", None)
-        .await
-        .expect("create first reply");
+    service::create_reply(
+        &pool,
+        102,
+        &topic,
+        &post_slug,
+        &comment_hash,
+        "First reply",
+        None,
+    )
+    .await
+    .expect("create first reply");
 
     let result = service::get_replies(&pool, &topic, &post_slug, &comment_hash, None, 25, 0)
         .await
@@ -28,9 +36,17 @@ async fn replies_are_hierarchical() {
     let (topic, post_slug, comment_hash) = common::seed_minimal(&pool).await;
 
     // Create reply A (top-level)
-    service::create_reply(&pool, 102, &topic, &post_slug, &comment_hash, "Reply A", None)
-        .await
-        .expect("create reply A");
+    service::create_reply(
+        &pool,
+        102,
+        &topic,
+        &post_slug,
+        &comment_hash,
+        "Reply A",
+        None,
+    )
+    .await
+    .expect("create reply A");
 
     // Get A's hash
     let result = service::get_replies(&pool, &topic, &post_slug, &comment_hash, None, 25, 0)
@@ -40,7 +56,12 @@ async fn replies_are_hierarchical() {
 
     // Create reply B as child of A
     service::create_reply(
-        &pool, 103, &topic, &post_slug, &comment_hash, "Reply B (child of A)",
+        &pool,
+        103,
+        &topic,
+        &post_slug,
+        &comment_hash,
+        "Reply B (child of A)",
         Some(hash_a),
     )
     .await
@@ -53,7 +74,12 @@ async fn replies_are_hierarchical() {
     let hash_b = &result.data[0].children[0].hash;
 
     service::create_reply(
-        &pool, 104, &topic, &post_slug, &comment_hash, "Reply C (child of B)",
+        &pool,
+        104,
+        &topic,
+        &post_slug,
+        &comment_hash,
+        "Reply C (child of B)",
         Some(hash_b),
     )
     .await
@@ -92,12 +118,11 @@ async fn replies_pagination() {
         .await
         .expect("get post id");
 
-    let comment_id: i64 =
-        sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
-            .bind(&comment_hash)
-            .fetch_one(&pool)
-            .await
-            .expect("get comment id");
+    let comment_id: i64 = sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
+        .bind(&comment_hash)
+        .fetch_one(&pool)
+        .await
+        .expect("get comment id");
 
     // Create 5 top-level replies
     for i in 0..5 {
@@ -146,12 +171,11 @@ async fn replies_vote_count() {
         .await
         .expect("get post id");
 
-    let comment_id: i64 =
-        sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
-            .bind(&comment_hash)
-            .fetch_one(&pool)
-            .await
-            .expect("get comment id");
+    let comment_id: i64 = sqlx::query_scalar("SELECT id FROM comments WHERE hash = $1")
+        .bind(&comment_hash)
+        .fetch_one(&pool)
+        .await
+        .expect("get comment id");
 
     // Create a reply and get its id
     let reply_id: i64 = sqlx::query_scalar(

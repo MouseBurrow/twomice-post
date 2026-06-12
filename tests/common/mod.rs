@@ -15,9 +15,7 @@ pub async fn get_db_pool() -> Pool<Postgres> {
             .max_connections(2)
             .connect(&url)
             .await
-            .unwrap_or_else(|e| panic!(
-                "Cannot connect to POST_DATABASE_URL={url}: {e}"
-            ));
+            .unwrap_or_else(|e| panic!("Cannot connect to POST_DATABASE_URL={url}: {e}"));
     }
 
     let url = start_docker_postgres().await;
@@ -41,14 +39,18 @@ fn run_migrations_docker(container: &str) {
         .expect("migrations directory not found")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql"))
+        .filter(|p| {
+            p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql")
+        })
         .collect();
     entries.sort();
 
     for path in &entries {
         let sql = std::fs::read_to_string(path).expect("failed to read migration file");
         let mut child = Command::new("docker")
-            .args(["exec", "-i", container, "psql", "-U", "twomice", "-d", "post"])
+            .args([
+                "exec", "-i", container, "psql", "-U", "twomice", "-d", "post",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -81,12 +83,17 @@ async fn start_docker_postgres() -> String {
 
     let output = Command::new("docker")
         .args([
-            "run", "-d",
-            "--name", &container_name,
+            "run",
+            "-d",
+            "--name",
+            &container_name,
             "--network=host",
-            "-e", "POSTGRES_USER=twomice",
-            "-e", "POSTGRES_PASSWORD=twomice",
-            "-e", "POSTGRES_DB=post",
+            "-e",
+            "POSTGRES_USER=twomice",
+            "-e",
+            "POSTGRES_PASSWORD=twomice",
+            "-e",
+            "POSTGRES_DB=post",
             "postgres:16",
         ])
         .output()
@@ -163,10 +170,22 @@ async fn try_connect_existing() -> Option<String> {
 
 /// Delete all data from all tables (safe ordering for FK constraints).
 pub async fn clean_all(pool: &Pool<Postgres>) {
-    sqlx::query("DELETE FROM reply_votes").execute(pool).await.ok();
-    sqlx::query("DELETE FROM topic_tags").execute(pool).await.ok();
-    sqlx::query("DELETE FROM comment_votes").execute(pool).await.ok();
-    sqlx::query("DELETE FROM post_votes").execute(pool).await.ok();
+    sqlx::query("DELETE FROM reply_votes")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM topic_tags")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM comment_votes")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM post_votes")
+        .execute(pool)
+        .await
+        .ok();
     sqlx::query("DELETE FROM replies").execute(pool).await.ok();
     sqlx::query("DELETE FROM comments").execute(pool).await.ok();
     sqlx::query("DELETE FROM posts").execute(pool).await.ok();
@@ -201,14 +220,13 @@ pub async fn seed_minimal(pool: &Pool<Postgres>) -> (String, String, String) {
     .await
     .expect("seed post");
 
-    let post_slug: String = sqlx::query_scalar(
-        "UPDATE posts SET slug = $1 WHERE id = $2 RETURNING slug",
-    )
-    .bind("test-post")
-    .bind(post_id)
-    .fetch_one(pool)
-    .await
-    .expect("set slug");
+    let post_slug: String =
+        sqlx::query_scalar("UPDATE posts SET slug = $1 WHERE id = $2 RETURNING slug")
+            .bind("test-post")
+            .bind(post_id)
+            .fetch_one(pool)
+            .await
+            .expect("set slug");
 
     let comment_hash: String = sqlx::query_scalar(
         "INSERT INTO comments (hash, sender_id, post_id, content)

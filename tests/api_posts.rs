@@ -7,12 +7,9 @@ async fn create_and_get_post() {
     let pool = common::get_db_pool().await;
     let (topic, _post_slug, _comment_hash) = common::seed_minimal(&pool).await;
 
-    let slug = service::create_post(
-        &pool, 200, &topic, "My Post", "Post content",
-        &None, &None,
-    )
-    .await
-    .expect("create_post should succeed");
+    let slug = service::create_post(&pool, 200, &topic, "My Post", "Post content", &None, &None)
+        .await
+        .expect("create_post should succeed");
 
     let post = service::get_post(&pool, &slug, None)
         .await
@@ -45,9 +42,17 @@ async fn post_reply_count_includes_replies() {
     let pool = common::get_db_pool().await;
     let (topic, post_slug, comment_hash) = common::seed_minimal(&pool).await;
 
-    service::create_reply(&pool, 102, &topic, &post_slug, &comment_hash, "A reply", None)
-        .await
-        .expect("create_reply should succeed");
+    service::create_reply(
+        &pool,
+        102,
+        &topic,
+        &post_slug,
+        &comment_hash,
+        "A reply",
+        None,
+    )
+    .await
+    .expect("create_reply should succeed");
 
     let post = service::get_post(&pool, &post_slug, None)
         .await

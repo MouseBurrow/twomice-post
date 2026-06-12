@@ -1,7 +1,9 @@
 use axum::routing::{get, post};
 use axum::Router;
 use config::server;
-use post::routes::boards::{create_board, get_active_boards, get_all_boards, get_board, get_board_tags};
+use post::routes::boards::{
+    create_board, get_active_boards, get_all_boards, get_board, get_board_tags,
+};
 use post::routes::comments::{create_comment, get_all_comments};
 use post::routes::feed::get_feed;
 use post::routes::posts::{create_post, get_all_posts, get_post};

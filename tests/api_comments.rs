@@ -37,13 +37,15 @@ async fn comments_pagination() {
     // Insert more comments
     for i in 0..5 {
         let hash = format!("c{}", (100 + i));
-        sqlx::query("INSERT INTO comments (hash, sender_id, post_id, content) VALUES ($1, 200, $2, $3)")
-            .bind(&hash)
-            .bind(post_id)
-            .bind(format!("Comment {}", i))
-            .execute(&pool)
-            .await
-            .expect("seed extra comment");
+        sqlx::query(
+            "INSERT INTO comments (hash, sender_id, post_id, content) VALUES ($1, 200, $2, $3)",
+        )
+        .bind(&hash)
+        .bind(post_id)
+        .bind(format!("Comment {}", i))
+        .execute(&pool)
+        .await
+        .expect("seed extra comment");
     }
 
     // Page 1 (limit 3)
