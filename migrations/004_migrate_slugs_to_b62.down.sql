@@ -1,0 +1,2 @@
+-- No-op: down migration for slug migration.
+-- Old slugs cannot be recovered from base62-encoded IDs.

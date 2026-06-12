@@ -14,7 +14,7 @@ if [ -z "${POST_DATABASE_URL:-}" ]; then
   DB_PORT="${DB_PORT:-5432}"
   TEST_DB="${TEST_DB:-post_test}"
   TEST_DB_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${TEST_DB}"
-  MIGRATIONS_DIR="$(cd "$(dirname "$0")" && pwd)/../../db/migrations/post"
+  MIGRATIONS_DIR="$(cd "$(dirname "$0")" && pwd)/migrations"
 
   # Check if the Postgres server is reachable
   if PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1" >/dev/null 2>&1; then

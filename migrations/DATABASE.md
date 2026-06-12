@@ -1,0 +1,131 @@
+# Post Service — Database Schema
+
+## Tables
+
+### `topics` — Boards / discussion categories
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `name` | `TEXT` | `UNIQUE NOT NULL` | Alphanumeric + underscores |
+| `description` | `TEXT` | `NOT NULL` | |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+| `deleted` | `BOOL` | `DEFAULT FALSE` | Soft-delete |
+
+### `posts` — Top-level posts ("nibs")
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `creator_id` | `BIGINT` | `NOT NULL` | User snowflake ID |
+| `topic_id` | `BIGINT` | `FK → topics(id) ON DELETE CASCADE` | Parent board |
+| `title` | `TEXT` | `NOT NULL` | Max 200 chars |
+| `slug` | `TEXT` | `NOT NULL` | Base62-encoded snowflake ID |
+| `content` | `TEXT` | `NOT NULL` | Max 50,000 chars |
+| `image_url` | `TEXT` | | Optional |
+| `tags` | `TEXT[]` | `DEFAULT '{}'` | Max 5 tags |
+| `view_count` | `BIGINT` | `DEFAULT 0` | Incremented on each GET |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+| `deleted` | `BOOL` | `DEFAULT FALSE` | Soft-delete |
+
+**Indexes:** `UNIQUE (topic_id, slug)`
+
+### `comments` — Comments on posts ("squeaks")
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `hash` | `VARCHAR(5)` | `NOT NULL` | Random base62, unique per post |
+| `sender_id` | `BIGINT` | `NOT NULL` | User snowflake ID |
+| `post_id` | `BIGINT` | `FK → posts(id) ON DELETE CASCADE` | Parent post |
+| `content` | `TEXT` | `NOT NULL` | Max 50,000 chars |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+| `deleted` | `BOOL` | `DEFAULT FALSE` | Soft-delete |
+
+**Indexes:** `UNIQUE (post_id, hash)`
+
+### `replies` — Replies to comments ("echoes")
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `hash` | `VARCHAR(5)` | `NOT NULL` | Random base62, unique per post |
+| `sender_id` | `BIGINT` | `NOT NULL` | User snowflake ID |
+| `post_id` | `BIGINT` | `FK → posts(id) ON DELETE CASCADE` | Parent post |
+| `comment_id` | `BIGINT` | `FK → comments(id) ON DELETE CASCADE` | Parent comment |
+| `reply_id` | `BIGINT` | `FK → replies(id) ON DELETE CASCADE` | **Nullable.** Parent reply for nesting |
+| `content` | `TEXT` | `NOT NULL` | Max 50,000 chars |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+| `deleted` | `BOOL` | `DEFAULT FALSE` | Soft-delete |
+
+**Indexes:** `UNIQUE (post_id, hash)`  
+**Self-referencing FK:** `reply_id → replies(id)` enables arbitrary-depth nesting.
+
+### `post_votes` — Votes on posts
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `user_id` | `BIGINT` | `NOT NULL` | Voter |
+| `post_id` | `BIGINT` | `FK → posts(id) ON DELETE CASCADE` | Target post |
+| `direction` | `SMALLINT` | `CHECK (direction IN (-1, 1))` | +1 upvote, -1 downvote |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+
+**Indexes:** `UNIQUE (user_id, post_id)`
+
+### `comment_votes` — Votes on comments
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `user_id` | `BIGINT` | `NOT NULL` | Voter |
+| `comment_id` | `BIGINT` | `FK → comments(id) ON DELETE CASCADE` | Target comment |
+| `direction` | `SMALLINT` | `CHECK (direction IN (-1, 1))` | +1 upvote, -1 downvote |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+
+**Indexes:** `UNIQUE (user_id, comment_id)`
+
+### `reply_votes` — Votes on replies
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `BIGINT` | `PK DEFAULT snowflake_id()` | Auto-generated |
+| `user_id` | `BIGINT` | `NOT NULL` | Voter |
+| `reply_id` | `BIGINT` | `FK → replies(id) ON DELETE CASCADE` | Target reply |
+| `direction` | `SMALLINT` | `CHECK (direction IN (-1, 1))` | +1 upvote, -1 downvote |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | |
+
+**Indexes:** `UNIQUE (user_id, reply_id)`
+
+### `topic_tags` — Allowed tags per board
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `topic_id` | `BIGINT` | `FK → topics(id) ON DELETE CASCADE` | |
+| `tag_name` | `TEXT` | `NOT NULL` | |
+
+**Indexes:** `UNIQUE (topic_id, tag_name)`
+
+## Relationships
+
+```
+topics ──┬── posts ──┬── comments ──┬── replies
+          │           │               │
+          │           │               └── reply_votes
+          │           │
+          │           └── comment_votes
+          │
+          └── post_votes
+
+replies ──┬── reply_votes
+          │
+          └── replies (self-referencing via reply_id)
+```
+
+## Conventions
+
+- **Soft-delete:** All content tables (`topics`, `posts`, `comments`, `replies`) use a `deleted BOOL` flag. Deleted records are not removed; the flag is checked in queries.
+- **IDs:** All primary keys are `BIGINT` snowflake IDs generated by `snowflake_id()` (timestamp + worker + sequence). IDs are exposed to clients as base62-encoded strings via `utils::encode_b62`.
+- **Hashes:** Comments and replies use a 5-character random base62 `hash` for URL-safe identification. Unique per post to prevent collisions.
+- **Voting:** All vote tables use `SMALLINT` direction (±1) with `UNIQUE(user_id, target_id)` to enforce one vote per user per entity. Direction `0` is handled at the application layer by deleting the row.
+- **Cascading deletes:** When a parent is deleted, all children cascade (votes, comments, replies).

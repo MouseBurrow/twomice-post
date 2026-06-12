@@ -28,7 +28,7 @@ pub async fn get_db_pool() -> Pool<Postgres> {
 
 /// Path to the migration files, relative to the crate root.
 fn migrations_dir() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../db/migrations/post")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations")
 }
 
 /// Run all `.up.sql` migrations via `docker exec`.
