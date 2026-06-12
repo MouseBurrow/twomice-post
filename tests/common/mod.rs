@@ -7,93 +7,61 @@ use sqlx::{Pool, Postgres};
 /// Get a connection pool to a test Postgres database.
 ///
 /// Priority:
-/// 1. `POST_DATABASE_URL` env var — connect directly, run migrations
+/// 1. `POST_DATABASE_URL` env var — connect directly (assumes already migrated)
 /// 2. No env var — start a Docker container, run migrations, connect
-///
-/// Requires `psql` on PATH for both migration paths.
-/// Requires Docker for the fallback path.
 pub async fn get_db_pool() -> Pool<Postgres> {
-    let url = if let Ok(url) = std::env::var("POST_DATABASE_URL") {
-        url
-    } else {
-        start_docker_postgres().await
-    };
+    if let Ok(url) = std::env::var("POST_DATABASE_URL") {
+        return PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .unwrap_or_else(|e| panic!(
+                "Cannot connect to POST_DATABASE_URL={url}: {e}"
+            ));
+    }
 
-    ensure_database_exists(&url);
-    run_migrations_psql(&url);
-
+    let url = start_docker_postgres().await;
     PgPoolOptions::new()
         .max_connections(2)
         .connect(&url)
         .await
-        .expect("failed to connect to test database after setup")
+        .expect("failed to connect to test database after Docker setup")
 }
 
-/// Drop and recreate the test database, then run migrations.
-/// Only drops databases named `post_test*` to avoid accidental data loss.
-fn ensure_database_exists(url: &str) {
-    let db_name = url.rsplit('/').next().expect("invalid database URL");
-
-    let admin_url = url
-        .rfind('/')
-        .map(|i| format!("{}/postgres", &url[..i]))
-        .unwrap_or_else(|| "postgresql://twomice:twomice@127.0.0.1:5432/postgres".into());
-
-    // Only drop/recreate dedicated test databases, not the main "post" db.
-    if db_name.starts_with("post_test") {
-        Command::new("psql")
-            .arg(&admin_url)
-            .arg("-c")
-            .arg(&format!("DROP DATABASE IF EXISTS \"{db_name}\""))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .expect("psql failed");
-
-        Command::new("psql")
-            .arg(&admin_url)
-            .arg("-c")
-            .arg(&format!("CREATE DATABASE \"{db_name}\""))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .expect("psql failed");
-    }
+/// Path to the migration files, relative to the crate root.
+fn migrations_dir() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../db/migrations/post")
 }
 
-/// Run all `.up.sql` migrations via psql.
-/// Errors (like "already exists") are expected when re-running against an existing DB.
-fn run_migrations_psql(url: &str) {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let migrations_dir = Path::new(manifest).join("../../db/migrations/post");
-
-    let mut entries: Vec<_> = std::fs::read_dir(&migrations_dir)
-        .expect("migrations directory not found (run from services/post/)")
+/// Run all `.up.sql` migrations via `docker exec`.
+/// Expects the container to already have Postgres ready.
+fn run_migrations_docker(container: &str) {
+    let dir = migrations_dir();
+    let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        .expect("migrations directory not found")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| {
-            p.extension().map_or(false, |e| e == "sql")
-                && p.to_string_lossy().ends_with(".up.sql")
-        })
+        .filter(|p| p.extension().map_or(false, |e| e == "sql") && p.to_string_lossy().ends_with(".up.sql"))
         .collect();
     entries.sort();
 
     for path in &entries {
-        Command::new("psql")
-            .arg(url)
-            .arg("-f")
-            .arg(path)
+        let sql = std::fs::read_to_string(path).expect("failed to read migration file");
+        let mut child = Command::new("docker")
+            .args(["exec", "-i", container, "psql", "-U", "twomice", "-d", "post"])
+            .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
-            .unwrap_or_else(|_| panic!("psql must be installed. Tried to run: psql {url}"));
-        // Exit code is ignored — "already exists" errors are expected
-        // when running migrations against an existing database.
+            .spawn()
+            .expect("docker must be installed");
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(sql.as_bytes()).ok();
+        child.wait().ok();
     }
 }
 
 /// Start a Postgres Docker container, run migrations, return the database URL.
-/// The container is scheduled for cleanup on process exit.
+/// Cleans up the container on process exit (best-effort).
 async fn start_docker_postgres() -> String {
     // First, check if there's already a Postgres on localhost:5432.
     let existing = try_connect_existing().await;
@@ -101,13 +69,12 @@ async fn start_docker_postgres() -> String {
         return url;
     }
 
-    // Try starting a new container with host networking (avoids docker-proxy issues).
-    let container_name = "post_test_auto";
-    let url = "postgresql://twomice:twomice@127.0.0.1:5432/post".to_string();
+    let pid = std::process::id();
+    let container_name = format!("post_test_{pid}");
 
-    // Clean up any leftover container from a previous run.
+    // Clean any leftover container with this name.
     let _ = Command::new("docker")
-        .args(["rm", "-f", container_name])
+        .args(["rm", "-f", &container_name])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
@@ -115,7 +82,7 @@ async fn start_docker_postgres() -> String {
     let output = Command::new("docker")
         .args([
             "run", "-d",
-            "--name", container_name,
+            "--name", &container_name,
             "--network=host",
             "-e", "POSTGRES_USER=twomice",
             "-e", "POSTGRES_PASSWORD=twomice",
@@ -123,27 +90,24 @@ async fn start_docker_postgres() -> String {
             "postgres:16",
         ])
         .output()
-        .expect("Docker must be installed and running for automatic Postgres setup");
+        .expect("Docker must be installed for automatic Postgres setup");
     if !output.status.success() {
         panic!(
             "Failed to start Docker Postgres.\n\
-             Set POST_DATABASE_URL to point to an existing Postgres, or \
-             start one manually:\n  \
+             Set POST_DATABASE_URL or start manually:\n  \
              docker run -d --name post_test -p 5433:5432 -e POSTGRES_USER=twomice \
              -e POSTGRES_PASSWORD=twomice -e POSTGRES_DB=post postgres:16\n\
-             Export: POST_DATABASE_URL=postgresql://twomice:twomice@127.0.0.1:5433/post\n\
-             Docker error: {}",
-            String::from_utf8_lossy(&output.stderr)
+             Then: POST_DATABASE_URL=postgresql://twomice:twomice@127.0.0.1:5433/post"
         );
     }
 
     // Wait for Postgres to be ready (handles the init restart cycle)
-    let container = container_name.to_string();
+    let wait = container_name.clone();
     tokio::task::spawn_blocking(move || {
         std::thread::sleep(std::time::Duration::from_secs(3));
         for _ in 0..30 {
             let ready = Command::new("docker")
-                .args(["exec", &container, "pg_isready", "-U", "twomice"])
+                .args(["exec", &wait, "pg_isready", "-U", "twomice"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()
@@ -151,48 +115,49 @@ async fn start_docker_postgres() -> String {
                 .unwrap_or(false);
             if ready {
                 std::thread::sleep(std::time::Duration::from_secs(2));
-                let still_ready = Command::new("docker")
-                    .args(["exec", &container, "pg_isready", "-U", "twomice"])
+                let still = Command::new("docker")
+                    .args(["exec", &wait, "pg_isready", "-U", "twomice"])
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .status()
                     .map(|s| s.success())
                     .unwrap_or(false);
-                if still_ready {
+                if still {
                     return;
                 }
             }
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
-        panic!("Timed out waiting for Postgres container to be ready");
+        panic!("Timed out waiting for Postgres container");
     })
     .await
     .unwrap();
 
+    // Run migrations from inside the container
+    run_migrations_docker(&container_name);
+
     // Schedule cleanup
-    let cleanup = container_name.to_string();
+    let cleanup = container_name.clone();
     tokio::task::spawn_blocking(move || {
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_secs(2));
         let _ = Command::new("docker")
             .args(["rm", "-f", &cleanup])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn();
+            .status();
     });
 
-    url
+    "postgresql://twomice:twomice@127.0.0.1:5432/post".to_string()
 }
 
 /// Try to connect to an existing Postgres on localhost:5432.
-/// If it responds, we use it rather than starting Docker.
 async fn try_connect_existing() -> Option<String> {
     let url = "postgresql://twomice:twomice@127.0.0.1:5432/post".to_string();
-    let pool = PgPoolOptions::new()
+    PgPoolOptions::new()
         .max_connections(1)
         .connect(&url)
         .await
         .ok()?;
-    drop(pool);
     Some(url)
 }
 
