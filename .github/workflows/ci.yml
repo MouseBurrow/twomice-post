@@ -7,21 +7,41 @@ on:
 env:
   CARGO_TERM_COLOR: always
 jobs:
-  build:
+  fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: clippy, rustfmt
-      - name: Pin libs for deployment context
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            sed -i 's/branch = "main"/tag = "stable"/' Cargo.toml
-          elif [[ "${{ github.ref_name }}" == "test" ]]; then
-            sed -i 's/branch = "main"/branch = "test"/' Cargo.toml
-          fi
-      - run: cargo build
-      - run: cargo test
+          components: rustfmt
       - run: cargo fmt --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
       - run: cargo clippy -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: twomice
+          POSTGRES_PASSWORD: twomice
+          POSTGRES_DB: post
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: ./run_tests.sh
+        env:
+          DB_HOST: postgres
