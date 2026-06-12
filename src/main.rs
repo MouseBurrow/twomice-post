@@ -1,18 +1,14 @@
-mod errors;
-mod routes;
-pub(crate) mod service;
-
 use axum::routing::{get, post};
 use axum::Router;
 use config::server;
-use routes::boards::{create_board, get_active_boards, get_all_boards, get_board, get_board_tags};
-use routes::comments::{create_comment, get_all_comments};
-use routes::feed::get_feed;
-use routes::posts::{create_post, get_all_posts, get_post};
-use routes::replies::{create_reply, get_replies};
-use routes::stats::get_internal_user_stats;
-use routes::user_posts::get_user_posts;
-use routes::votes::{cast_comment_vote, cast_post_vote, cast_reply_vote};
+use post::routes::boards::{create_board, get_active_boards, get_all_boards, get_board, get_board_tags};
+use post::routes::comments::{create_comment, get_all_comments};
+use post::routes::feed::get_feed;
+use post::routes::posts::{create_post, get_all_posts, get_post};
+use post::routes::replies::{create_reply, get_replies};
+use post::routes::stats::get_internal_user_stats;
+use post::routes::user_posts::get_user_posts;
+use post::routes::votes::{cast_comment_vote, cast_post_vote, cast_reply_vote};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -1,21 +1,21 @@
-pub(crate) mod boards;
-pub(crate) mod comments;
-pub(crate) mod feed;
-pub(crate) mod posts;
-pub(crate) mod replies;
-pub(crate) mod stats;
-pub(crate) mod user_posts;
-pub(crate) mod votes;
+pub mod boards;
+pub mod comments;
+pub mod feed;
+pub mod posts;
+pub mod replies;
+pub mod stats;
+pub mod user_posts;
+pub mod votes;
 
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub(crate) struct ContentBody {
+pub struct ContentBody {
     pub content: String,
 }
 
 #[derive(Deserialize)]
-pub(crate) struct EchoBody {
+pub struct EchoBody {
     pub content: String,
     pub reply_hash: Option<String>,
 }

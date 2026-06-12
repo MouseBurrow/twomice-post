@@ -496,7 +496,7 @@ pub async fn get_all_comments(
                  WHERE comment_id = c.id
              ) cv ON true
              WHERE c.post_id = $1
-             ORDER BY c.created_at DESC
+             ORDER BY c.created_at DESC, c.id ASC
              LIMIT $2 OFFSET $3",
         )
         .bind(post_id)
@@ -517,7 +517,7 @@ pub async fn get_all_comments(
                  WHERE comment_id = c.id
              ) cv ON true
              WHERE c.post_id = $1
-             ORDER BY COALESCE(cv.vote_count, 0) DESC, c.created_at DESC
+             ORDER BY COALESCE(cv.vote_count, 0) DESC, c.created_at DESC, c.id ASC
              LIMIT $2 OFFSET $3",
         )
         .bind(post_id)
@@ -649,7 +649,7 @@ pub async fn get_replies(
          FROM replies r
          JOIN comments c ON c.id = r.comment_id
          WHERE r.post_id = $1 AND c.hash = $2 AND r.reply_id IS NULL
-         ORDER BY r.created_at
+         ORDER BY r.created_at, r.id
          LIMIT $3 OFFSET $4",
     )
     .bind(post_id)
