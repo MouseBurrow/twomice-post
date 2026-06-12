@@ -34,3 +34,20 @@ pub async fn cast_comment_vote(
         service::cast_comment_vote(&app.pool, user_id.into(), comment_id, body.direction).await?;
     Ok(Json(serde_json::json!({ "vote_count": vote_count })))
 }
+
+pub async fn cast_reply_vote(
+    State(app): State<AppData>,
+    Path((_topic_name, _post_slug, _comment_hash, reply_hash)): Path<(
+        String,
+        String,
+        String,
+        String,
+    )>,
+    user_id: UserId,
+    Json(body): Json<VoteBody>,
+) -> Result<Json<serde_json::Value>, PostError> {
+    let reply_id = service::resolve_reply_id(&app.pool, &reply_hash).await?;
+    let vote_count =
+        service::cast_reply_vote(&app.pool, user_id.into(), reply_id, body.direction).await?;
+    Ok(Json(serde_json::json!({ "vote_count": vote_count })))
+}

@@ -12,7 +12,7 @@ use routes::posts::{create_post, get_all_posts, get_post};
 use routes::replies::{create_reply, get_replies};
 use routes::stats::get_internal_user_stats;
 use routes::user_posts::get_user_posts;
-use routes::votes::{cast_comment_vote, cast_post_vote};
+use routes::votes::{cast_comment_vote, cast_post_vote, cast_reply_vote};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,6 +37,10 @@ async fn main() -> anyhow::Result<()> {
             .route(
                 "/b/:topic/nib/:post_id/sqk/:hash/echoes",
                 post(create_reply).get(get_replies),
+            )
+            .route(
+                "/b/:topic/nib/:post_id/sqk/:comment_hash/echoes/:reply_hash/vote",
+                post(cast_reply_vote),
             )
             .route("/feed", get(get_feed))
             .route("/users/me/nibs", get(get_user_posts))

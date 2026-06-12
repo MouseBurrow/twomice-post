@@ -4,7 +4,9 @@ use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::{Pool, Postgres};
+use std::collections::HashMap;
 use std::sync::OnceLock;
+use utils::PaginatedResponse;
 
 const MAX_TITLE_LEN: usize = 200;
 const MAX_CONTENT_LEN: usize = 50000;
@@ -86,11 +88,18 @@ struct CommentRow {
 
 #[derive(FromRow)]
 struct ReplyRow {
+    #[allow(dead_code)]
+    id: i64,
     hash: String,
     content: String,
     created_at: DateTime<Utc>,
     deleted: bool,
     sender_id: i64,
+    #[allow(dead_code)]
+    reply_id: Option<i64>,
+    parent_hash: Option<String>,
+    #[sqlx(default)]
+    vote_count: i64,
 }
 
 #[derive(FromRow)]
@@ -249,7 +258,9 @@ pub async fn get_post(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                 COALESCE(p.tags, '{}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
+                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
+                as reply_count,
                 p.view_count,
                 t.name as board_id,
                 p.creator_id
@@ -320,7 +331,9 @@ pub async fn get_all_posts(
         "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                 COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                 COALESCE(p.tags, '{}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
+                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
+                as reply_count,
                 p.view_count,
                 t.name as board_id,
                 p.creator_id
@@ -397,8 +410,26 @@ pub struct CommentData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_mine: Option<bool>,
 }
+#[allow(dead_code)]
 pub type NoteData = CommentData;
-pub type ReplyData = NoteData;
+
+#[derive(Serialize)]
+pub struct ReplyData {
+    pub hash: String,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
+    pub deleted: bool,
+    #[serde(default)]
+    pub vote_count: i64,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anon_token: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_mine: Option<bool>,
+    #[serde(default)]
+    pub children: Vec<ReplyData>,
+}
 
 pub async fn create_comment(
     pool: &Pool<Postgres>,
@@ -553,53 +584,156 @@ pub async fn get_replies(
     post_b62_or_slug: &str,
     comment_hash: &str,
     maybe_user_id: Option<i64>,
-) -> Result<Vec<ReplyData>, PostError> {
+    limit: i64,
+    offset: i64,
+) -> Result<PaginatedResponse<ReplyData>, PostError> {
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
-    let rows: Vec<ReplyRow> = sqlx::query_as(
-        "SELECT r.hash, r.content, r.created_at, r.deleted, r.sender_id
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::BIGINT
          FROM replies r
          JOIN comments c ON c.id = r.comment_id
-         WHERE r.post_id = $1 AND c.hash = $2
-         ORDER BY r.created_at",
+         WHERE r.post_id = $1 AND c.hash = $2 AND r.reply_id IS NULL",
     )
     .bind(post_id)
     .bind(comment_hash)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+
+    let top_ids: Vec<(i64,)> = sqlx::query_as(
+        "SELECT r.id
+         FROM replies r
+         JOIN comments c ON c.id = r.comment_id
+         WHERE r.post_id = $1 AND c.hash = $2 AND r.reply_id IS NULL
+         ORDER BY r.created_at
+         LIMIT $3 OFFSET $4",
+    )
+    .bind(post_id)
+    .bind(comment_hash)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await
     .map_err(map_sqlx_error::<PostError>)?;
 
-    let result = rows
-        .into_iter()
-        .map(|row| {
-            let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
-                let mine = row.sender_id == uid;
-                (
-                    Some(mine),
-                    Some(compute_squeak_anon_token(
-                        uid,
-                        row.sender_id,
-                        topic_name,
-                        post_b62_or_slug,
-                    )),
-                )
-            } else {
-                (None, None)
-            };
+    let top_id_list: Vec<i64> = top_ids.into_iter().map(|(id,)| id).collect();
 
+    let rows: Vec<ReplyRow> = if !top_id_list.is_empty() {
+        sqlx::query_as(
+            "WITH RECURSIVE reply_tree AS (
+                 SELECT r.id, r.hash, r.content, r.created_at, r.deleted,
+                        r.sender_id, r.reply_id, NULL::VARCHAR(5) as parent_hash,
+                        COALESCE(rv.vote_count, 0)::BIGINT as vote_count
+                 FROM replies r
+                 LEFT JOIN LATERAL (
+                     SELECT COALESCE(SUM(direction), 0) as vote_count
+                     FROM reply_votes
+                     WHERE reply_id = r.id
+                 ) rv ON true
+                 WHERE r.id = ANY($1)
+
+                 UNION ALL
+
+                 SELECT r.id, r.hash, r.content, r.created_at, r.deleted,
+                        r.sender_id, r.reply_id, pr.hash as parent_hash,
+                        COALESCE(rv.vote_count, 0)::BIGINT as vote_count
+                 FROM replies r
+                 JOIN reply_tree rt ON r.reply_id = rt.id
+                 LEFT JOIN replies pr ON pr.id = r.reply_id
+                 LEFT JOIN LATERAL (
+                     SELECT COALESCE(SUM(direction), 0) as vote_count
+                     FROM reply_votes
+                     WHERE reply_id = r.id
+                 ) rv ON true
+             )
+             SELECT id, hash, content, created_at, deleted, sender_id,
+                    reply_id, parent_hash, vote_count
+             FROM reply_tree
+             ORDER BY created_at",
+        )
+        .bind(&top_id_list[..])
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?
+    } else {
+        Vec::new()
+    };
+
+    let mut reply_map: HashMap<String, ReplyData> = HashMap::new();
+    let mut children_of: HashMap<String, Vec<String>> = HashMap::new();
+    let mut roots: Vec<String> = Vec::new();
+
+    for row in rows {
+        let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
+            let mine = row.sender_id == uid;
+            (
+                Some(mine),
+                Some(compute_squeak_anon_token(
+                    uid,
+                    row.sender_id,
+                    topic_name,
+                    post_b62_or_slug,
+                )),
+            )
+        } else {
+            (None, None)
+        };
+
+        let hash = row.hash.clone();
+        let parent_hash = row.parent_hash.clone();
+
+        reply_map.insert(
+            hash.clone(),
             ReplyData {
                 hash: row.hash,
                 content: row.content,
                 created_at: row.created_at,
                 deleted: row.deleted,
-                vote_count: 0,
+                vote_count: row.vote_count,
                 anon_token,
                 is_mine,
-            }
-        })
-        .collect();
+                children: Vec::new(),
+            },
+        );
 
-    Ok(result)
+        if let Some(ph) = parent_hash {
+            children_of.entry(ph).or_default().push(hash.clone());
+        } else {
+            roots.push(hash);
+        }
+    }
+
+    fn attach_children(
+        hash: &str,
+        reply_map: &mut HashMap<String, ReplyData>,
+        children_of: &HashMap<String, Vec<String>>,
+    ) -> ReplyData {
+        let mut node = reply_map.remove(hash).expect("reply must exist");
+        if let Some(child_hashes) = children_of.get(hash) {
+            for child_hash in child_hashes {
+                if reply_map.contains_key(child_hash) {
+                    node.children
+                        .push(attach_children(child_hash, reply_map, children_of));
+                }
+            }
+        }
+        node.children.sort_by_key(|a| a.created_at);
+        node
+    }
+
+    let mut top_level: Vec<ReplyData> = Vec::new();
+    for root_hash in roots {
+        if reply_map.contains_key(&root_hash) {
+            top_level.push(attach_children(&root_hash, &mut reply_map, &children_of));
+        }
+    }
+
+    top_level.sort_by_key(|a| a.created_at);
+
+    Ok(PaginatedResponse::new(top_level)
+        .with_total(total)
+        .with_pagination(limit, offset))
 }
 
 #[derive(Serialize)]
@@ -656,6 +790,15 @@ pub async fn resolve_comment_id(
         .await
         .map_err(map_sqlx_error::<PostError>)?;
     id.ok_or(PostError::CommentNotFound)
+}
+
+pub async fn resolve_reply_id(pool: &Pool<Postgres>, reply_hash: &str) -> Result<i64, PostError> {
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM replies WHERE hash = $1")
+        .bind(reply_hash)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+    id.ok_or(PostError::ReplyNotFound)
 }
 
 pub async fn cast_post_vote(
@@ -736,6 +879,45 @@ pub async fn cast_comment_vote(
     Ok(count)
 }
 
+pub async fn cast_reply_vote(
+    pool: &Pool<Postgres>,
+    user_id: i64,
+    reply_id: i64,
+    direction: i8,
+) -> Result<i64, PostError> {
+    if direction == 0 {
+        sqlx::query("DELETE FROM reply_votes WHERE user_id = $1 AND reply_id = $2")
+            .bind(user_id)
+            .bind(reply_id)
+            .execute(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)?;
+    } else {
+        let dir: i16 = if direction > 0 { 1 } else { -1 };
+        sqlx::query(
+            "INSERT INTO reply_votes (user_id, reply_id, direction)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, reply_id) DO UPDATE SET direction = $3",
+        )
+        .bind(user_id)
+        .bind(reply_id)
+        .bind(dir)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
+    }
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(direction), 0)::BIGINT FROM reply_votes WHERE reply_id = $1",
+    )
+    .bind(reply_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
+
+    Ok(count)
+}
+
 pub async fn get_active_boards(
     pool: &Pool<Postgres>,
     limit: i64,
@@ -767,7 +949,9 @@ pub async fn get_feed_posts(
             "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                     COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                     COALESCE(p.tags, '{}') as tags,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
+                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
+                as reply_count,
                     p.view_count,
                     t.name as board_id,
                     p.creator_id
@@ -790,7 +974,9 @@ pub async fn get_feed_posts(
             "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                     COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                     COALESCE(p.tags, '{}') as tags,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
+                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
+                as reply_count,
                     p.view_count,
                     t.name as board_id,
                     p.creator_id
@@ -813,7 +999,9 @@ pub async fn get_feed_posts(
             "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
                     COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
                     COALESCE(p.tags, '{}') as tags,
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
+                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
+                as reply_count,
                     p.view_count,
                     t.name as board_id,
                     p.creator_id
@@ -866,7 +1054,9 @@ pub async fn get_user_posts(
                 NULL::TEXT as anon_token,
                 true as is_mine,
                 COALESCE(p.tags, '{}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT as reply_count,
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
+                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
+                as reply_count,
                 p.view_count,
                 false as is_hot,
                 t.name as board_id

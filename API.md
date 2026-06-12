@@ -140,7 +140,7 @@ Response `200`:
 | `board_id` | string or null | Board name for frontend navigation links |
 | `tags` | string[] | Post tags |
 | `vote_count` | integer | Net vote score |
-| `reply_count` | integer | Number of non-deleted comments |
+| `reply_count` | integer | Number of non-deleted comments + replies |
 | `view_count` | integer | Total views |
 
 ---
@@ -253,22 +253,46 @@ Response `204` No Content.
 
 ### `GET /b/:topic/nib/:post_id/sqk/:hash/echoes` — List replies to a comment (public, auth-aware)
 
-Same shape as comments:
-```json
-[
-  {
-    "hash": "xYz99",
-    "content": "I agree!",
-    "created_at": "...",
-    "deleted": false,
-    "vote_count": 0,
-    "anon_token": "b2c3d4e5f6g7h8i9",
-    "is_mine": true
-  }
-]
-```
+When `X-User-Id` is provided, each reply includes `is_mine` and `anon_token`.
 
-Replies do not have voting (vote_count is always 0).
+Query params:
+
+| Param | Type | Default | Max | Description |
+|---|---|---|---|---|
+| `limit` | integer | 25 | 100 | Number of top-level replies to return |
+| `offset` | integer | 0 | — | Offset for pagination (top-level only) |
+
+Response `200` — top-level replies are paginated; nested children are returned in full:
+```json
+{
+  "data": [
+    {
+      "hash": "xYz99",
+      "content": "I agree!",
+      "created_at": "...",
+      "deleted": false,
+      "vote_count": 3,
+      "anon_token": "b2c3d4e5f6g7h8i9",
+      "is_mine": true,
+      "children": [
+        {
+          "hash": "aBc12",
+          "content": "Nested reply",
+          "created_at": "...",
+          "deleted": false,
+          "vote_count": 1,
+          "anon_token": "c3d4e5f6g7h8i9j0",
+          "is_mine": false,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "total": 42,
+  "limit": 25,
+  "offset": 0
+}
+```
 
 ---
 
@@ -288,6 +312,26 @@ Body:
 | `reply_hash` | no | Hash of a parent reply to nest under. If `null`, replies directly to the comment. Must belong to the same post+comment. |
 
 Response `204` No Content.
+
+---
+
+### `POST /b/:topic/nib/:post_id/sqk/:comment_hash/echoes/:reply_hash/vote` — Vote on reply (protected)
+
+Body:
+```json
+{ "direction": 1 }
+```
+
+| direction | Meaning |
+|---|---|
+| `1` | Upvote |
+| `-1` | Downvote |
+| `0` | Remove vote |
+
+Response `200`:
+```json
+{ "vote_count": 5 }
+```
 
 ---
 
@@ -366,7 +410,7 @@ Response `200`:
 }
 ```
 
-### CommentData / ReplyData
+### CommentData
 
 ```json
 {
@@ -377,6 +421,21 @@ Response `200`:
   "vote_count":  "integer",
   "anon_token":  "string | null",  // 16 hex chars, always set when auth'd
   "is_mine":     "bool | null"
+}
+```
+
+### ReplyData
+
+```json
+{
+  "hash":        "string",         // 5-char base62 ID
+  "content":     "string",
+  "created_at":  "ISO 8601 datetime",
+  "deleted":     "bool",
+  "vote_count":  "integer",
+  "anon_token":  "string | null",  // 16 hex chars, always set when auth'd
+  "is_mine":     "bool | null",
+  "children":    "ReplyData[]"     // nested replies, empty array if none
 }
 ```
 
@@ -417,4 +476,6 @@ Response `200`:
 |---|---|
 | `:topic` | Board name (e.g. `announcements`, `general`, `tech`) |
 | `:post_id` | Post slug (base62 snowflake ID, e.g. `3B7kA`) |
-| `:hash` | Comment/reply hash (5-char base62, e.g. `aB3x9`) |
+| `:hash` | Comment hash (5-char base62, e.g. `aB3x9`) |
+| `:comment_hash` | Comment hash (used in reply vote route) |
+| `:reply_hash` | Reply hash (5-char base62, e.g. `xYz99`) |
