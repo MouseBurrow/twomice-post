@@ -1,62 +1,91 @@
 #!/usr/bin/env bash
-# Helper script: runs tests with a dedicated Postgres database.
-# Tests run sequentially to avoid DB race conditions.
+# Runs tests against a temporary Postgres container.
+# Handles container lifecycle (start → wait → migrate → test → cleanup).
 #
 # Usage: ./run_tests.sh
 set -euo pipefail
 
-DB_USER="${DB_USER:-twomice}"
-DB_PASS="${DB_PASS:-twomice}"
-DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-5432}"
+CONTAINER_NAME="twomice-post-test"
+DB_USER="twomice"
+DB_PASS="twomice"
+DB_NAME="post"
+MIGRATIONS_DIR="$(dirname "$0")/migrations"
 
-# Pre-compile all test binaries once (avoids re-linking for each target)
-# Do this FIRST — it takes minutes in CI and gives Postgres time to start.
+cleanup() {
+  echo "Cleaning up..."
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+DB_URL=""
+
+# First, check if there's already a Postgres running (e.g. from docker-compose)
+if PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p 5432 -U "$DB_USER" -d postgres -c "SELECT 1" >/dev/null 2>&1; then
+  echo "Using existing Postgres at 127.0.0.1:5432"
+  # Create a dedicated test database
+  PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p 5432 -U "$DB_USER" -d postgres \
+    -c "DROP DATABASE IF EXISTS ${DB_NAME}_test" \
+    -c "CREATE DATABASE ${DB_NAME}_test OWNER ${DB_USER}" > /dev/null
+  # Run migrations
+  echo "Running migrations..."
+  for f in "$MIGRATIONS_DIR"/*.up.sql; do
+    PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "${DB_NAME}_test" -f "$f" > /dev/null 2>&1 || true
+  done
+  DB_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}_test"
+
+elif docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+  echo "Reusing existing container $CONTAINER_NAME"
+  DB_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}"
+
+else
+  echo "Starting Postgres container..."
+  # Use bridge networking with a unique port to avoid conflicts
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  docker run -d \
+    --name "$CONTAINER_NAME" \
+    -p 5432 \
+    -e POSTGRES_USER="$DB_USER" \
+    -e POSTGRES_PASSWORD="$DB_PASS" \
+    -e POSTGRES_DB="$DB_NAME" \
+    postgres:16 > /dev/null
+
+  # Get the mapped port
+  HOST_PORT=$(docker port "$CONTAINER_NAME" 5432 | head -1 | sed 's/.*://')
+
+  # Wait for Postgres (handles the init restart cycle)
+  for i in $(seq 1 30); do
+    if docker exec "$CONTAINER_NAME" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+      sleep 2
+      if docker exec "$CONTAINER_NAME" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+        break
+      fi
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo "Timed out waiting for Postgres"
+      exit 1
+    fi
+    sleep 1
+  done
+
+  # Run migrations
+  echo "Running migrations..."
+  for f in "$MIGRATIONS_DIR"/*.up.sql; do
+    docker exec -i "$CONTAINER_NAME" psql -U "$DB_USER" -d "$DB_NAME" < "$f" > /dev/null 2>&1 || true
+  done
+
+  DB_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:${HOST_PORT}/${DB_NAME}"
+fi
+
+export POST_DATABASE_URL="$DB_URL"
+echo "POST_DATABASE_URL=$DB_URL"
+
+# Compile once, run each binary sequentially
 echo "Compiling tests..."
 cargo test --no-run 2>&1
 
 echo ""
-
-# Only set up Postgres if not already configured
-if [ -z "${POST_DATABASE_URL:-}" ]; then
-  TEST_DB="${TEST_DB:-post_test}"
-  TEST_DB_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${TEST_DB}"
-  MIGRATIONS_DIR="$(cd "$(dirname "$0")" && pwd)/migrations"
-
-  # Wait for Postgres to be ready (it should be by now — compilation took a while)
-  for i in $(seq 1 10); do
-    if PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1" >/dev/null 2>&1; then
-      echo "Setting up test database '${TEST_DB}'..."
-      PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres <<SQL
-DROP DATABASE IF EXISTS ${TEST_DB};
-CREATE DATABASE ${TEST_DB} OWNER ${DB_USER};
-SQL
-
-      echo "Running migrations..."
-      {
-        for f in "$MIGRATIONS_DIR"/*.up.sql; do
-          cat "$f"
-          echo ""
-        done
-      } | PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$TEST_DB" -f - > /dev/null
-
-      export POST_DATABASE_URL="$TEST_DB_URL"
-      break
-    fi
-    if [ "$i" -eq 10 ]; then
-      echo "No Postgres reachable at ${DB_HOST}:${DB_PORT}."
-      echo "The test code will start a Docker container automatically."
-      echo ""
-    fi
-    sleep 1
-  done
-fi
-
-echo ""
-echo "Running tests..."
 EXIT_CODE=0
 for target in lib api_comments api_posts api_replies api_votes; do
-  echo ""
   echo "=== $target ==="
   if [ "$target" = "lib" ]; then
     cargo test --lib -- --test-threads=1 2>&1 || EXIT_CODE=$?
