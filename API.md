@@ -374,6 +374,26 @@ Returns all posts created by the authenticated user.
 `is_mine` is always `true`, `anon_token` is always computed.
 
 Response `200`: Array of `PostData`.
+```json
+[
+  {
+    "title": "My first post",
+    "slug": "3B7kA",
+    "content": "Hello world!",
+    "image_url": null,
+    "created_at": "2026-06-11T12:00:00Z",
+    "deleted": false,
+    "vote_count": 5,
+    "anon_token": "a1b2c3d4e5f6g7h8",
+    "is_mine": true,
+    "tags": ["rust"],
+    "reply_count": 2,
+    "view_count": 120,
+    "is_hot": true,
+    "board_id": "announcements"
+  }
+]
+```
 
 ---
 
@@ -416,7 +436,7 @@ Response `200`:
   "anon_token":   "string | null",  // 16 hex chars, only for own posts
   "is_mine":      "bool | null",    // null if unauthenticated
   "tags":         "string[]",
-  "reply_count":  "integer",
+  "reply_count":  "integer",       // comments + replies (non-deleted)
   "view_count":   "integer",
   "is_hot":       "bool",
   "board_id":     "string | null"   // board name for nav links
