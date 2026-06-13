@@ -134,7 +134,7 @@ Response `200`:
 | Field | Type | Description |
 |---|---|---|
 | `slug` | string | Base62-encoded snowflake ID, used as post identifier |
-| `anon_token` | string or null | 16-char hex hash; present when viewer owns the post and board is anonymous |
+| `anon_token` | string or null | 16-char hex hash; always present when authenticated. Deterministic per sender+board+post — matches the comment token for the same author |
 | `is_mine` | bool or null | Whether the viewer owns this post (null if unauthenticated) |
 | `is_hot` | bool | `true` if vote_count > 10 or view_count > 100 |
 | `board_id` | string or null | Board name for frontend navigation links |
@@ -433,7 +433,7 @@ Response `200`:
   "created_at":   "ISO 8601 datetime",
   "deleted":      "bool",
   "vote_count":   "integer",
-  "anon_token":   "string | null",  // 16 hex chars, only for own posts
+  "anon_token":   "string | null",  // 16 hex chars, always set when auth'd
   "is_mine":      "bool | null",    // null if unauthenticated
   "tags":         "string[]",
   "reply_count":  "integer",       // comments + replies (non-deleted)

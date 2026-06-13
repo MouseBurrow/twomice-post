@@ -37,12 +37,7 @@ fn post_auth_fields(
     match (maybe_user_id, creator_id) {
         (Some(uid), Some(cid)) => {
             let mine = cid == uid;
-            let token = if mine {
-                Some(compute_anon_token(uid, board_name, slug))
-            } else {
-                None
-            };
-            (Some(mine), token)
+            (Some(mine), Some(compute_anon_token(cid, board_name, slug)))
         }
         _ => (None, None),
     }
