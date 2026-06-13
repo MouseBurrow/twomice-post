@@ -176,7 +176,10 @@ pub struct InternalUserStats {
     pub upvote_count: i64,
 }
 
-pub async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Result<i64, PostError> {
+pub async fn resolve_post_b62(
+    pool: &Pool<Postgres>,
+    post_b62_or_slug: &str,
+) -> Result<i64, PostError> {
     if let Some(id) = utils::decode_b62(post_b62_or_slug) {
         return Ok(id);
     }
@@ -264,20 +267,20 @@ pub async fn resolve_reply_id(pool: &Pool<Postgres>, reply_hash: &str) -> Result
 }
 
 pub mod boards;
-pub mod posts;
 pub mod comments;
-pub mod replies;
-pub mod votes;
 pub mod feed;
+pub mod posts;
+pub mod replies;
 pub mod stats;
+pub mod votes;
 
 pub use self::boards::*;
-pub use self::posts::*;
 pub use self::comments::*;
-pub use self::replies::*;
-pub use self::votes::*;
 pub use self::feed::*;
+pub use self::posts::*;
+pub use self::replies::*;
 pub use self::stats::*;
+pub use self::votes::*;
 
 #[cfg(test)]
 mod tests {

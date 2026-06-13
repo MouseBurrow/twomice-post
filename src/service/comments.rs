@@ -81,7 +81,7 @@ pub async fn get_all_comments(
             .bind(offset)
             .fetch_all(pool)
             .await
-            .map_err(map_sqlx_error::<PostError>)? 
+            .map_err(map_sqlx_error::<PostError>)?
     };
 
     let data = rows

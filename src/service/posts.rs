@@ -1,10 +1,10 @@
 use super::{
     compute_anon_token, post_auth_fields, resolve_post_b62, validate_tags, PostData, PostError,
-    PostRow, POST_BASE, MAX_CONTENT_LEN, MAX_TAGS_PER_POST, MAX_TITLE_LEN,
+    PostRow, MAX_CONTENT_LEN, MAX_TAGS_PER_POST, MAX_TITLE_LEN, POST_BASE,
 };
 use easy_errors::map_sqlx_error;
-use sqlx::{Pool, Postgres};
 use sqlx::AssertSqlSafe;
+use sqlx::{Pool, Postgres};
 use tracing::info;
 
 pub async fn create_post(
@@ -70,10 +70,10 @@ pub async fn get_post(
 
     let sql = format!("{} WHERE p.id = $1", POST_BASE);
     let row: Option<PostRow> = sqlx::query_as(AssertSqlSafe(sql))
-    .bind(post_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
+        .bind(post_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
 
     let row = row.ok_or(PostError::PostNotFound)?;
 
@@ -88,7 +88,8 @@ pub async fn get_post(
     let is_hot = row.vote_count > 10 || row.view_count > 100;
 
     let board_name = row.board_id.as_deref().unwrap_or("");
-    let (is_mine, anon_token) = post_auth_fields(maybe_user_id, row.creator_id, &row.slug, board_name);
+    let (is_mine, anon_token) =
+        post_auth_fields(maybe_user_id, row.creator_id, &row.slug, board_name);
 
     Ok(PostData {
         title: row.title,
@@ -153,7 +154,10 @@ pub async fn get_user_posts(
     pool: &Pool<Postgres>,
     user_id: i64,
 ) -> Result<Vec<PostData>, PostError> {
-    let sql = format!("{} WHERE p.creator_id = $1 ORDER BY p.created_at DESC", POST_BASE);
+    let sql = format!(
+        "{} WHERE p.creator_id = $1 ORDER BY p.created_at DESC",
+        POST_BASE
+    );
     let rows: Vec<PostRow> = sqlx::query_as(AssertSqlSafe(sql))
         .bind(user_id)
         .fetch_all(pool)
@@ -165,7 +169,10 @@ pub async fn get_user_posts(
         .map(|row| {
             let is_hot = row.vote_count > 10 || row.view_count > 100;
             let board_name = row.board_id.as_deref().unwrap_or("");
-            let (is_mine, anon_token) = (Some(true), Some(compute_anon_token(user_id, board_name, &row.slug)));
+            let (is_mine, anon_token) = (
+                Some(true),
+                Some(compute_anon_token(user_id, board_name, &row.slug)),
+            );
 
             PostData {
                 title: row.title,
