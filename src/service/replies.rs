@@ -171,7 +171,11 @@ fn build_reply_tree(
             let mine = row.sender_id == uid;
             (
                 Some(mine),
-                Some(compute_anon_token(row.sender_id, topic_name, post_b62_or_slug)),
+                Some(compute_anon_token(
+                    row.sender_id,
+                    topic_name,
+                    post_b62_or_slug,
+                )),
             )
         } else {
             (None, None)

@@ -330,5 +330,4 @@ mod tests {
             "MAX_TAGS_PER_POST out of range"
         );
     }
-
 }
