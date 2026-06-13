@@ -18,12 +18,18 @@ pub async fn create_board(
 }
 
 pub async fn get_board(pool: &Pool<Postgres>, name: &str) -> Result<BoardData, PostError> {
-    let board: Option<BoardData> =
-        sqlx::query_as("SELECT name, description, created_at, deleted FROM topics WHERE name = $1")
-            .bind(name)
-            .fetch_optional(pool)
-            .await
-            .map_err(map_sqlx_error::<PostError>)?;
+    let board: Option<BoardData> = sqlx::query_as(
+        "SELECT t.name, t.description, t.created_at, t.deleted,
+                    COUNT(p.id)::BIGINT as post_count
+             FROM topics t
+             LEFT JOIN posts p ON p.topic_id = t.id AND p.deleted = false
+             WHERE t.name = $1
+             GROUP BY t.id",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error::<PostError>)?;
 
     board.ok_or(PostError::TopicNotFound)
 }

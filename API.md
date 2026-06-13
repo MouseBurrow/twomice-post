@@ -85,7 +85,7 @@ Response `204` No Content.
 
 Response `200`:
 ```json
-{ "name": "general", "description": "General discussion", "created_at": "...", "deleted": false }
+{ "name": "general", "description": "General discussion", "created_at": "...", "deleted": false, "post_count": 42 }
 ```
 
 ---

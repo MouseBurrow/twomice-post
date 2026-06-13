@@ -49,6 +49,8 @@ pub struct BoardData {
     pub description: String,
     pub created_at: DateTime<Utc>,
     pub deleted: bool,
+    #[sqlx(default)]
+    pub post_count: i64,
 }
 
 #[derive(FromRow, Serialize)]
