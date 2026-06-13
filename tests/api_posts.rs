@@ -18,7 +18,7 @@ async fn create_and_get_post() {
     assert_eq!(post.content, "Post content");
     assert_eq!(post.reply_count, 0); // no comments on this post yet
 
-    let resolved = service::resolve_post_id(&pool, &topic, &slug)
+    let resolved = service::resolve_post_b62(&pool, &slug)
         .await
         .expect("resolve_post_id should succeed");
     assert!(resolved > 0);
@@ -65,7 +65,7 @@ async fn feed_returns_hot_posts() {
     let pool = common::get_db_pool().await;
     common::seed_minimal(&pool).await;
 
-    let posts = service::get_feed_posts(&pool, "hot", &config::app_envs::AppEnvs::DEV)
+    let posts = service::get_feed_posts(&pool, "hot")
         .await
         .expect("get_feed_posts should succeed");
     assert!(!posts.is_empty());
@@ -77,7 +77,7 @@ async fn feed_sort_new() {
     let pool = common::get_db_pool().await;
     common::seed_minimal(&pool).await;
 
-    let posts = service::get_feed_posts(&pool, "new", &config::app_envs::AppEnvs::DEV)
+    let posts = service::get_feed_posts(&pool, "new")
         .await
         .expect("get_feed_posts(new) should succeed");
     assert!(!posts.is_empty());
@@ -88,7 +88,7 @@ async fn feed_sort_top() {
     let pool = common::get_db_pool().await;
     common::seed_minimal(&pool).await;
 
-    let posts = service::get_feed_posts(&pool, "top", &config::app_envs::AppEnvs::DEV)
+    let posts = service::get_feed_posts(&pool, "top")
         .await
         .expect("get_feed_posts(top) should succeed");
     assert!(!posts.is_empty());

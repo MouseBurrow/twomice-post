@@ -1,9 +1,10 @@
 use super::{
-    compute_anon_token, resolve_post_b62, validate_tags, PostData, PostError, PostRow,
-    MAX_CONTENT_LEN, MAX_TAGS_PER_POST, MAX_TITLE_LEN,
+    compute_anon_token, post_auth_fields, resolve_post_b62, validate_tags, PostData, PostError,
+    PostRow, POST_BASE, MAX_CONTENT_LEN, MAX_TAGS_PER_POST, MAX_TITLE_LEN,
 };
 use easy_errors::map_sqlx_error;
 use sqlx::{Pool, Postgres};
+use sqlx::AssertSqlSafe;
 use tracing::info;
 
 pub async fn create_post(
@@ -67,25 +68,8 @@ pub async fn get_post(
 ) -> Result<PostData, PostError> {
     let post_id = resolve_post_b62(pool, post_b62_or_slug).await?;
 
-    let row: Option<PostRow> = sqlx::query_as(
-        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
-                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                COALESCE(p.tags, '{}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
-                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
-                as reply_count,
-                p.view_count,
-                t.name as board_id,
-                p.creator_id
-         FROM posts p
-         JOIN topics t ON t.id = p.topic_id
-         LEFT JOIN LATERAL (
-             SELECT COALESCE(SUM(direction), 0) as vote_count
-             FROM post_votes
-             WHERE post_id = p.id
-         ) pv ON true
-         WHERE p.id = $1",
-    )
+    let sql = format!("{} WHERE p.id = $1", POST_BASE);
+    let row: Option<PostRow> = sqlx::query_as(AssertSqlSafe(sql))
     .bind(post_id)
     .fetch_optional(pool)
     .await
@@ -103,22 +87,8 @@ pub async fn get_post(
 
     let is_hot = row.vote_count > 10 || row.view_count > 100;
 
-    let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
-        if let Some(cid) = row.creator_id {
-            let mine = cid == uid;
-            let token = if mine {
-                let board = row.board_id.as_deref().unwrap_or("");
-                Some(compute_anon_token(uid, board, &row.slug))
-            } else {
-                None
-            };
-            (Some(mine), token)
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
+    let board_name = row.board_id.as_deref().unwrap_or("");
+    let (is_mine, anon_token) = post_auth_fields(maybe_user_id, row.creator_id, &row.slug, board_name);
 
     Ok(PostData {
         title: row.title,
@@ -143,51 +113,19 @@ pub async fn get_all_posts(
     topic_name: &str,
     maybe_user_id: Option<i64>,
 ) -> Result<Vec<PostData>, PostError> {
-    let rows: Vec<PostRow> = sqlx::query_as(
-        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
-                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                COALESCE(p.tags, '{}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
-                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
-                as reply_count,
-                p.view_count,
-                t.name as board_id,
-                p.creator_id
-         FROM posts p
-         JOIN topics t ON t.id = p.topic_id
-         LEFT JOIN LATERAL (
-             SELECT COALESCE(SUM(direction), 0) as vote_count
-             FROM post_votes
-             WHERE post_id = p.id
-         ) pv ON true
-         WHERE t.name = $1
-         ORDER BY p.created_at",
-    )
-    .bind(topic_name)
-    .fetch_all(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
+    let sql = format!("{} WHERE t.name = $1 ORDER BY p.created_at", POST_BASE);
+    let rows: Vec<PostRow> = sqlx::query_as(AssertSqlSafe(sql))
+        .bind(topic_name)
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
 
     let result = rows
         .into_iter()
         .map(|row| {
             let is_hot = row.vote_count > 10 || row.view_count > 100;
-
-            let (is_mine, anon_token) = if let Some(uid) = maybe_user_id {
-                if let Some(cid) = row.creator_id {
-                    let mine = cid == uid;
-                    let token = if mine {
-                        Some(compute_anon_token(uid, topic_name, &row.slug))
-                    } else {
-                        None
-                    };
-                    (Some(mine), token)
-                } else {
-                    (None, None)
-                }
-            } else {
-                (None, None)
-            };
+            let (is_mine, anon_token) =
+                post_auth_fields(maybe_user_id, row.creator_id, &row.slug, topic_name);
 
             PostData {
                 title: row.title,
@@ -215,38 +153,38 @@ pub async fn get_user_posts(
     pool: &Pool<Postgres>,
     user_id: i64,
 ) -> Result<Vec<PostData>, PostError> {
-    let mut posts: Vec<PostData> = sqlx::query_as(
-        "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted,
-                COALESCE(pv.vote_count, 0)::BIGINT as vote_count,
-                NULL::TEXT as anon_token,
-                true as is_mine,
-                COALESCE(p.tags, '{}') as tags,
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT
-                + (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT
-                as reply_count,
-                p.view_count,
-                false as is_hot,
-                t.name as board_id
-         FROM posts p
-         JOIN topics t ON t.id = p.topic_id
-         LEFT JOIN LATERAL (
-             SELECT COALESCE(SUM(direction), 0) as vote_count
-             FROM post_votes
-             WHERE post_id = p.id
-         ) pv ON true
-         WHERE p.creator_id = $1
-         ORDER BY p.created_at DESC",
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-    .map_err(map_sqlx_error::<PostError>)?;
+    let sql = format!("{} WHERE p.creator_id = $1 ORDER BY p.created_at DESC", POST_BASE);
+    let rows: Vec<PostRow> = sqlx::query_as(AssertSqlSafe(sql))
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .map_err(map_sqlx_error::<PostError>)?;
 
-    for post in &mut posts {
-        post.is_hot = post.vote_count > 10 || post.view_count > 100;
-        let board = post.board_id.as_deref().unwrap_or("");
-        post.anon_token = Some(compute_anon_token(user_id, board, &post.slug));
-    }
+    let posts = rows
+        .into_iter()
+        .map(|row| {
+            let is_hot = row.vote_count > 10 || row.view_count > 100;
+            let board_name = row.board_id.as_deref().unwrap_or("");
+            let (is_mine, anon_token) = (Some(true), Some(compute_anon_token(user_id, board_name, &row.slug)));
+
+            PostData {
+                title: row.title,
+                slug: row.slug,
+                content: row.content,
+                image_url: row.image_url,
+                created_at: row.created_at,
+                deleted: row.deleted,
+                vote_count: row.vote_count,
+                anon_token,
+                is_mine,
+                tags: row.tags,
+                reply_count: row.reply_count,
+                view_count: row.view_count,
+                is_hot,
+                board_id: row.board_id,
+            }
+        })
+        .collect();
 
     Ok(posts)
 }

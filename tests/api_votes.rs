@@ -5,9 +5,9 @@ use post::service;
 #[tokio::test]
 async fn post_vote_toggle() {
     let pool = common::get_db_pool().await;
-    let (topic, post_slug, _) = common::seed_minimal(&pool).await;
+    let (_topic, post_slug, _) = common::seed_minimal(&pool).await;
 
-    let post_id = service::resolve_post_id(&pool, &topic, &post_slug)
+    let post_id = service::resolve_post_b62(&pool, &post_slug)
         .await
         .expect("resolve post");
 
@@ -33,9 +33,9 @@ async fn post_vote_toggle() {
 #[tokio::test]
 async fn post_vote_multiple_users() {
     let pool = common::get_db_pool().await;
-    let (topic, post_slug, _) = common::seed_minimal(&pool).await;
+    let (_topic, post_slug, _) = common::seed_minimal(&pool).await;
 
-    let post_id = service::resolve_post_id(&pool, &topic, &post_slug)
+    let post_id = service::resolve_post_b62(&pool, &post_slug)
         .await
         .expect("resolve post");
 
@@ -83,9 +83,9 @@ async fn comment_vote_consistency() {
 #[tokio::test]
 async fn invalid_vote_direction() {
     let pool = common::get_db_pool().await;
-    let (topic, post_slug, _) = common::seed_minimal(&pool).await;
+    let (_topic, post_slug, _) = common::seed_minimal(&pool).await;
 
-    let post_id = service::resolve_post_id(&pool, &topic, &post_slug)
+    let post_id = service::resolve_post_b62(&pool, &post_slug)
         .await
         .expect("resolve post");
 

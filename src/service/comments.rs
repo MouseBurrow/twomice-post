@@ -3,7 +3,7 @@ use super::{
     MAX_CONTENT_LEN,
 };
 use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
-use sqlx::{Pool, Postgres};
+use sqlx::{AssertSqlSafe, Pool, Postgres};
 use tracing::info;
 use utils::PaginatedResponse;
 
@@ -55,8 +55,12 @@ pub async fn get_all_comments(
         .await
         .map_err(map_sqlx_error::<PostError>)?;
 
-    let rows: Vec<CommentRow> = match sort {
-        "new" => sqlx::query_as(
+    let order = match sort {
+        "new" => "ORDER BY c.created_at DESC, c.id ASC",
+        _ => "ORDER BY COALESCE(cv.vote_count, 0) DESC, c.created_at DESC, c.id ASC",
+    };
+    let rows: Vec<CommentRow> = {
+        let sql = format!(
             "SELECT c.hash, c.content, c.created_at, c.deleted,
                     COALESCE(cv.vote_count, 0)::BIGINT as vote_count,
                     c.sender_id
@@ -67,57 +71,17 @@ pub async fn get_all_comments(
                  WHERE comment_id = c.id
              ) cv ON true
              WHERE c.post_id = $1
-             ORDER BY c.created_at DESC, c.id ASC
+             {}
              LIMIT $2 OFFSET $3",
-        )
-        .bind(post_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await
-        .map_err(map_sqlx_error::<PostError>)?,
-
-        "top" => sqlx::query_as(
-            "SELECT c.hash, c.content, c.created_at, c.deleted,
-                    COALESCE(cv.vote_count, 0)::BIGINT as vote_count,
-                    c.sender_id
-             FROM comments c
-             LEFT JOIN LATERAL (
-                 SELECT COALESCE(SUM(direction), 0) as vote_count
-                 FROM comment_votes
-                 WHERE comment_id = c.id
-             ) cv ON true
-             WHERE c.post_id = $1
-             ORDER BY COALESCE(cv.vote_count, 0) DESC, c.created_at DESC, c.id ASC
-             LIMIT $2 OFFSET $3",
-        )
-        .bind(post_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await
-        .map_err(map_sqlx_error::<PostError>)?,
-
-        _ => sqlx::query_as(
-            "SELECT c.hash, c.content, c.created_at, c.deleted,
-                    COALESCE(cv.vote_count, 0)::BIGINT as vote_count,
-                    c.sender_id
-             FROM comments c
-             LEFT JOIN LATERAL (
-                 SELECT COALESCE(SUM(direction), 0) as vote_count
-                 FROM comment_votes
-                 WHERE comment_id = c.id
-             ) cv ON true
-             WHERE c.post_id = $1
-             ORDER BY COALESCE(cv.vote_count, 0) DESC, c.created_at DESC, c.id ASC
-             LIMIT $2 OFFSET $3",
-        )
-        .bind(post_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await
-        .map_err(map_sqlx_error::<PostError>)?,
+            order
+        );
+        sqlx::query_as(AssertSqlSafe(sql))
+            .bind(post_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await
+            .map_err(map_sqlx_error::<PostError>)? 
     };
 
     let data = rows

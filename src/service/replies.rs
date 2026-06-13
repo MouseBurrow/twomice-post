@@ -3,7 +3,6 @@ use super::{
 };
 use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use sqlx::{Pool, Postgres};
-use std::collections::HashMap;
 use tracing::info;
 use utils::PaginatedResponse;
 
@@ -148,6 +147,21 @@ pub async fn get_replies(
         Vec::new()
     };
 
+    let top_level = build_reply_tree(rows, maybe_user_id, topic_name, post_b62_or_slug);
+
+    Ok(PaginatedResponse::new(top_level)
+        .with_total(total)
+        .with_pagination(limit, offset))
+}
+
+fn build_reply_tree(
+    rows: Vec<ReplyRow>,
+    maybe_user_id: Option<i64>,
+    topic_name: &str,
+    post_b62_or_slug: &str,
+) -> Vec<ReplyData> {
+    use std::collections::HashMap;
+
     let mut reply_map: HashMap<String, ReplyData> = HashMap::new();
     let mut children_of: HashMap<String, Vec<String>> = HashMap::new();
     let mut roots: Vec<String> = Vec::new();
@@ -218,8 +232,5 @@ pub async fn get_replies(
     }
 
     top_level.sort_by_key(|a| a.created_at);
-
-    Ok(PaginatedResponse::new(top_level)
-        .with_total(total)
-        .with_pagination(limit, offset))
+    top_level
 }

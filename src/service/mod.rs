@@ -9,6 +9,45 @@ const MAX_TITLE_LEN: usize = 200;
 const MAX_CONTENT_LEN: usize = 50000;
 const MAX_TAGS_PER_POST: usize = 5;
 
+const POST_BASE: &str = concat!(
+    "SELECT p.title, p.slug, p.content, p.image_url, p.created_at, p.deleted, ",
+    "COALESCE(pv.vote_count, 0)::BIGINT as vote_count, ",
+    "COALESCE(p.tags, '{}') as tags, ",
+    "(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted = false)::BIGINT ",
+    "+ (SELECT COUNT(*) FROM replies r WHERE r.post_id = p.id AND r.deleted = false)::BIGINT ",
+    "as reply_count, ",
+    "p.view_count, ",
+    "t.name as board_id, ",
+    "p.creator_id ",
+    "FROM posts p ",
+    "JOIN topics t ON t.id = p.topic_id ",
+    "LEFT JOIN LATERAL (",
+    "    SELECT COALESCE(SUM(direction), 0) as vote_count ",
+    "    FROM post_votes ",
+    "    WHERE post_id = p.id ",
+    ") pv ON true"
+);
+
+fn post_auth_fields(
+    maybe_user_id: Option<i64>,
+    creator_id: Option<i64>,
+    slug: &str,
+    board_name: &str,
+) -> (Option<bool>, Option<String>) {
+    match (maybe_user_id, creator_id) {
+        (Some(uid), Some(cid)) => {
+            let mine = cid == uid;
+            let token = if mine {
+                Some(compute_anon_token(uid, board_name, slug))
+            } else {
+                None
+            };
+            (Some(mine), token)
+        }
+        _ => (None, None),
+    }
+}
+
 #[derive(FromRow, Serialize)]
 pub struct BoardData {
     pub name: String,
@@ -137,7 +176,7 @@ pub struct InternalUserStats {
     pub upvote_count: i64,
 }
 
-async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Result<i64, PostError> {
+pub async fn resolve_post_b62(pool: &Pool<Postgres>, post_b62_or_slug: &str) -> Result<i64, PostError> {
     if let Some(id) = utils::decode_b62(post_b62_or_slug) {
         return Ok(id);
     }
@@ -201,14 +240,6 @@ fn compute_squeak_anon_token(
     );
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..8])
-}
-
-pub async fn resolve_post_id(
-    pool: &Pool<Postgres>,
-    _topic_name: &str,
-    post_b62_or_slug: &str,
-) -> Result<i64, PostError> {
-    resolve_post_b62(pool, post_b62_or_slug).await
 }
 
 pub async fn resolve_comment_id(
