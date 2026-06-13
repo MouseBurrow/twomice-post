@@ -1,5 +1,5 @@
 use super::{
-    compute_squeak_anon_token, resolve_post_b62, PostError, ReplyData, ReplyRow, MAX_CONTENT_LEN,
+    compute_anon_token, resolve_post_b62, PostError, ReplyData, ReplyRow, MAX_CONTENT_LEN,
 };
 use easy_errors::{insert_retry_on_duplicate, map_sqlx_error};
 use sqlx::{Pool, Postgres};
@@ -171,12 +171,7 @@ fn build_reply_tree(
             let mine = row.sender_id == uid;
             (
                 Some(mine),
-                Some(compute_squeak_anon_token(
-                    uid,
-                    row.sender_id,
-                    topic_name,
-                    post_b62_or_slug,
-                )),
+                Some(compute_anon_token(row.sender_id, topic_name, post_b62_or_slug)),
             )
         } else {
             (None, None)

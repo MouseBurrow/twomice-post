@@ -229,22 +229,6 @@ fn compute_anon_token(user_id: i64, board_name: &str, post_slug: &str) -> String
     hex::encode(&hash[..8])
 }
 
-fn compute_squeak_anon_token(
-    viewer_id: i64,
-    sender_id: i64,
-    board_name: &str,
-    post_slug: &str,
-) -> String {
-    use sha2::{Digest, Sha256};
-    let salt = get_anon_salt();
-    let input = format!(
-        "sqk:{}:{}:{}:{}:{}",
-        viewer_id, sender_id, board_name, post_slug, salt
-    );
-    let hash = Sha256::digest(input.as_bytes());
-    hex::encode(&hash[..8])
-}
-
 pub async fn resolve_comment_id(
     pool: &Pool<Postgres>,
     comment_hash: &str,
@@ -325,63 +309,6 @@ mod tests {
     }
 
     #[test]
-    fn squeak_anon_token_is_deterministic() {
-        let a = compute_squeak_anon_token(1, 5, "general", "abc123");
-        let b = compute_squeak_anon_token(1, 5, "general", "abc123");
-        assert_eq!(a, b, "same inputs must produce same squeak token");
-    }
-
-    #[test]
-    fn squeak_anon_token_differs_per_sender() {
-        let a = compute_squeak_anon_token(1, 5, "general", "abc123");
-        let b = compute_squeak_anon_token(1, 99, "general", "abc123");
-        assert_ne!(
-            a, b,
-            "different commenters on the same post must get different tokens per viewer"
-        );
-    }
-
-    #[test]
-    fn squeak_anon_token_differs_per_viewer() {
-        let a = compute_squeak_anon_token(1, 5, "general", "abc123");
-        let b = compute_squeak_anon_token(2, 5, "general", "abc123");
-        assert_ne!(
-            a, b,
-            "different viewers must see different tokens for the same commenter"
-        );
-    }
-
-    #[test]
-    fn squeak_anon_token_differs_per_board() {
-        let a = compute_squeak_anon_token(1, 5, "general", "abc123");
-        let b = compute_squeak_anon_token(1, 5, "random", "abc123");
-        assert_ne!(
-            a, b,
-            "different boards must produce different squeak tokens"
-        );
-    }
-
-    #[test]
-    fn squeak_anon_token_differs_from_post_token() {
-        let post_token = compute_anon_token(1, "general", "abc123");
-        let squeak_token = compute_squeak_anon_token(1, 5, "general", "abc123");
-        assert_ne!(
-            post_token, squeak_token,
-            "post tokens and squeak tokens must use different hash domains"
-        );
-    }
-
-    #[test]
-    fn squeak_anon_token_is_16_hex_chars() {
-        let token = compute_squeak_anon_token(42, 7, "board", "slug123");
-        assert_eq!(token.len(), 16);
-        assert!(
-            token.chars().all(|c| c.is_ascii_hexdigit()),
-            "token must be hex"
-        );
-    }
-
-    #[test]
     fn anon_salt_is_consistent() {
         let a = get_anon_salt();
         let b = get_anon_salt();
@@ -409,19 +336,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn token_domain_isolation() {
-        for user_id in [1, 2, 100] {
-            for board in ["general", "random", "tech"] {
-                for slug in ["abc", "xyz", "123"] {
-                    let post_tok = compute_anon_token(user_id, board, slug);
-                    let sqk_tok = compute_squeak_anon_token(user_id, user_id, board, slug);
-                    assert_ne!(
-                        post_tok, sqk_tok,
-                        "domain collision: user={user_id}, board={board}, slug={slug}"
-                    );
-                }
-            }
-        }
-    }
 }
