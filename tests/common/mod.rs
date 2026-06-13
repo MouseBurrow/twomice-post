@@ -20,23 +20,35 @@ pub async fn clean_all(pool: &Pool<Postgres>) {
     sqlx::query("DELETE FROM reply_votes")
         .execute(pool)
         .await
-        .ok();
+        .unwrap_or_else(|e| panic!("clean_all failed on reply_votes: {e}"));
     sqlx::query("DELETE FROM topic_tags")
         .execute(pool)
         .await
-        .ok();
+        .unwrap_or_else(|e| panic!("clean_all failed on topic_tags: {e}"));
     sqlx::query("DELETE FROM comment_votes")
         .execute(pool)
         .await
-        .ok();
+        .unwrap_or_else(|e| panic!("clean_all failed on comment_votes: {e}"));
     sqlx::query("DELETE FROM post_votes")
         .execute(pool)
         .await
-        .ok();
-    sqlx::query("DELETE FROM replies").execute(pool).await.ok();
-    sqlx::query("DELETE FROM comments").execute(pool).await.ok();
-    sqlx::query("DELETE FROM posts").execute(pool).await.ok();
-    sqlx::query("DELETE FROM topics").execute(pool).await.ok();
+        .unwrap_or_else(|e| panic!("clean_all failed on post_votes: {e}"));
+    sqlx::query("DELETE FROM replies")
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("clean_all failed on replies: {e}"));
+    sqlx::query("DELETE FROM comments")
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("clean_all failed on comments: {e}"));
+    sqlx::query("DELETE FROM posts")
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("clean_all failed on posts: {e}"));
+    sqlx::query("DELETE FROM topics")
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("clean_all failed on topics: {e}"));
 }
 
 /// Seed a minimal dataset: a board, a post, and a comment.
