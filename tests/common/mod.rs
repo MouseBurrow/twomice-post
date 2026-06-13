@@ -7,9 +7,8 @@ use sqlx::{Pool, Postgres};
 /// tokio runtime, and each `#[tokio::test]` gets its own runtime).
 /// Connection is fast (<10ms) when `POST_DATABASE_URL` is set.
 pub async fn get_db_pool() -> Pool<Postgres> {
-    let url = std::env::var("POST_DATABASE_URL").expect(
-        "POST_DATABASE_URL must be set. Run ./run_tests.sh or set it manually.",
-    );
+    let url = std::env::var("POST_DATABASE_URL")
+        .expect("POST_DATABASE_URL must be set. Run ./run_tests.sh or set it manually.");
     PgPoolOptions::new()
         .max_connections(2)
         .connect(&url)
@@ -18,10 +17,22 @@ pub async fn get_db_pool() -> Pool<Postgres> {
 }
 
 pub async fn clean_all(pool: &Pool<Postgres>) {
-    sqlx::query("DELETE FROM reply_votes").execute(pool).await.ok();
-    sqlx::query("DELETE FROM topic_tags").execute(pool).await.ok();
-    sqlx::query("DELETE FROM comment_votes").execute(pool).await.ok();
-    sqlx::query("DELETE FROM post_votes").execute(pool).await.ok();
+    sqlx::query("DELETE FROM reply_votes")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM topic_tags")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM comment_votes")
+        .execute(pool)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM post_votes")
+        .execute(pool)
+        .await
+        .ok();
     sqlx::query("DELETE FROM replies").execute(pool).await.ok();
     sqlx::query("DELETE FROM comments").execute(pool).await.ok();
     sqlx::query("DELETE FROM posts").execute(pool).await.ok();
